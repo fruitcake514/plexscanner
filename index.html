@@ -343,7 +343,7 @@
     // Track scanning progress
     let scanInProgress = false;
     let scanStartTime;
-    const mockSteps = ['Connecting to Plex server', 'Fetching shows', 'Processing show metadata', 'Checking TMDb matches', 'Comparing episodes', 'Finalizing results'];
+    let statusCheckInterval;
     
     function updateScanUI(isScanning) {
       const scanBtn = document.getElementById('run-scan');
@@ -365,70 +365,78 @@
       }
     }
     
-    function simulateScanProgress() {
+    function checkScanStatus() {
       if (!scanInProgress) return;
       
-      const progressBar = document.getElementById('scanProgressBar');
-      const scanStatus = document.getElementById('scanStatus');
-      const scanProgressText = document.getElementById('scanProgress');
-      const currentProgress = parseInt(progressBar.style.width);
-      
-      if (currentProgress < 100) {
-        const newProgress = Math.min(currentProgress + Math.random() * 5, 99);
-        progressBar.style.width = newProgress + '%';
-        progressBar.setAttribute('aria-valuenow', newProgress);
-        scanProgressText.textContent = Math.round(newProgress) + '%';
-        
-        // Update status message periodically
-        const stepIndex = Math.floor(newProgress / (100 / mockSteps.length));
-        if (stepIndex < mockSteps.length) {
-          scanStatus.textContent = mockSteps[stepIndex] + '...';
-        }
-        
-        setTimeout(simulateScanProgress, 200 + Math.random() * 800);
-      }
-    }
-    
-    function runScan() {
-      if (scanInProgress) return;
-      
-      scanInProgress = true;
-      updateScanUI(true);
-      simulateScanProgress();
-      
-      fetch('/scan')
+      fetch('/scan-status')
         .then(res => res.json())
         .then(data => {
-          if (data.success) {
-            // Ensure the progress bar gets to 100%
-            const progressBar = document.getElementById('scanProgressBar');
-            const scanProgressText = document.getElementById('scanProgress');
-            const scanStatus = document.getElementById('scanStatus');
+          const progressBar = document.getElementById('scanProgressBar');
+          const scanStatus = document.getElementById('scanStatus');
+          const scanProgressText = document.getElementById('scanProgress');
+          
+          // Update progress
+          progressBar.style.width = data.progress + '%';
+          progressBar.setAttribute('aria-valuenow', data.progress);
+          scanProgressText.textContent = Math.round(data.progress) + '%';
+          
+          // Update status message
+          let statusMsg = data.status_message;
+          if (data.current_show) {
+            statusMsg += ` (${data.processed_shows}/${data.total_shows})`;
+          }
+          if (data.elapsed_time) {
+            statusMsg += ` - Running for ${data.elapsed_time}`;
+          }
+          scanStatus.textContent = statusMsg;
+          
+          // Check if scan is complete
+          if (!data.in_progress && data.progress >= 100) {
+            clearInterval(statusCheckInterval);
             
-            progressBar.style.width = '100%';
-            progressBar.setAttribute('aria-valuenow', 100);
-            scanProgressText.textContent = '100%';
+            // Show completion message
             scanStatus.textContent = 'Scan complete! Reloading...';
             
             // Calculate scan duration
             const duration = ((Date.now() - scanStartTime) / 1000).toFixed(1);
             console.log(`Scan completed in ${duration} seconds`);
             
-            // Wait a moment before reloading to show 100%
+            // Wait a moment before reloading
             setTimeout(() => {
               window.location.reload();
-            }, 1000);
-          } else {
-            alert('Scan failed.');
+            }, 1500);
+          } else if (!data.in_progress) {
+            // Scan failed or was interrupted
+            alert('Scan stopped unexpectedly.');
             scanInProgress = false;
             updateScanUI(false);
+            clearInterval(statusCheckInterval);
+          }
+        })
+        .catch(err => {
+          console.error('Status check error:', err);
+        });
+    }
+    
+    function runScan() {
+      if (scanInProgress) return;
+      
+      fetch('/scan')
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            scanInProgress = true;
+            updateScanUI(true);
+            
+            // Start polling for scan status
+            statusCheckInterval = setInterval(checkScanStatus, 1000);
+          } else {
+            alert(data.error || 'Scan failed to start.');
           }
         })
         .catch(err => {
           console.error('Fetch error:', err);
           alert('Failed to run scan.');
-          scanInProgress = false;
-          updateScanUI(false);
         });
     }
     
