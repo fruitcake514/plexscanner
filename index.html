@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Plex TMDb Scanner</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    .card {
+      margin-bottom: 1rem;
+    }
+    .card-header {
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body class="bg-light">
+  <div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center">
+      <h1>Plex TMDb Scan Results</h1>
+      <button class="btn btn-primary" id="run-scan">Run Scan</button>
+    </div>
+    <div id="resultCards" class="mt-4 row">
+      {% for title, data in results.items() %}
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header bg-{{ 'success' if data.status == 'Complete' else 'warning' }} text-white">
+              {{ title }}
+            </div>
+            <div class="card-body">
+              <p><strong>Status:</strong> {{ data.status }}</p>
+              <p><strong>Series Status:</strong> {{ data.series_status }}</p>
+
+              {% if data.missing_episodes %}
+                <p><strong>Missing Episodes:</strong></p>
+                <ul>
+                  {% for s, e in data.missing_episodes %}
+                    <li>Season {{ s }}, Episode {{ e }}</li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <p class="text-success">No missing episodes</p>
+              {% endif %}
+
+              <form class="fix-form" onsubmit="fixMatch(event, '{{ title }}')">
+                <div class="mb-2">
+                  <label for="tmdb_id_{{ loop.index }}" class="form-label">Fix TMDb ID</label>
+                  <input type="text" class="form-control" name="tmdb_id" placeholder="Enter TMDb ID">
+                </div>
+                <button class="btn btn-sm btn-outline-secondary" type="submit">Fix Match</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <script>
+    function runScan() {
+      fetch('/scan')
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            alert('Scan complete! Reloading...');
+            window.location.reload();
+          }
+        });
+    }
+
+    function fixMatch(event, title) {
+      event.preventDefault();
+      const form = event.target;
+      const tmdb_id = form.querySelector('input[name="tmdb_id"]').value;
+      const formData = new FormData();
+      formData.append('title', title);
+      formData.append('tmdb_id', tmdb_id);
+
+      fetch('/fix-match', {
+        method: 'POST',
+        body: formData
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          alert('Match updated successfully! Reloading...');
+          window.location.reload();
+        } else {
+          alert('Error: ' + data.error);
+        }
+      });
+    }
+    document.getElementById('run-scan').addEventListener('click', function () {
+    fetch('/scan')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Scan failed.');
+            }
+        })
+        .catch(err => {
+            console.error('Fetch error:', err);
+            alert('Failed to run scan.');
+        });
+});
+  </script>
+</body>
+</html>
+
