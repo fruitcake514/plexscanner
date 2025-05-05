@@ -11,9 +11,9 @@ import random
 app = Flask(__name__)
 
 # === CONFIG ===
-PLEX_URL = 'http://192.168.1.5:32400'
-PLEX_TOKEN = 'xn1SyxxNZkX2mr5aqNnB'
-TMDB_API_KEY = 'a2c079689712769699d8d20249314e73'
+PLEX_URL = 'xxxxxx'
+PLEX_TOKEN = 'xxxxxx'
+TMDB_API_KEY = 'xxxxxx'
 JSON_PATH = os.path.join(os.path.dirname(__file__), 'scan_results.json')
 
 # Global variables for scan status
