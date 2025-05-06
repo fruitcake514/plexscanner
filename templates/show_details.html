@@ -433,20 +433,20 @@
 
         <!-- Fix Match Form -->
         <div class="card">
-          <div class="card-header">
-            <i class="bi bi-tools me-2"></i> Fix Match
-          </div>
-          <div class="card-body">
-            <form class="fix-form" onsubmit="fixMatch(event, '{{ title }}')">
-              <div class="mb-3">
-                <label for="tmdbIdInput" class="form-label">TMDb ID</label>
-                <input type="text" class="form-control" id="tmdbIdInput" name="tmdb_id" placeholder="Enter TMDb ID">
-                <div class="form-text text-muted">Enter a TMDb ID to manually fix incorrect matches</div>
-              </div>
-              <button class="btn btn-primary w-100" type="submit">Update Match</button>
-            </form>
-          </div>
-        </div>
+  <div class="card-header">
+    <i class="bi bi-tools me-2"></i> Fix Match
+  </div>
+  <div class="card-body">
+    <form class="fix-form" onsubmit="fixMatch(event, '{{ title }}')">
+      <div class="mb-3">
+        <label for="tmdbIdInput" class="form-label">TMDb ID</label>
+        <input type="text" class="form-control" id="tmdbIdInput" name="tmdb_id" placeholder="Enter TMDb ID" value="{{ show.tmdb_id }}">
+        <div class="form-text text-muted">Enter a TMDb ID to manually fix incorrect matches</div>
+      </div>
+      <button class="btn btn-primary w-100" type="submit">Update Match</button>
+    </form>
+  </div>
+</div>
       </div>
 
       <!-- Right Column: Overview and Episodes -->
