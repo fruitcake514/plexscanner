@@ -492,7 +492,8 @@
       
       <input type="radio" class="btn-check" name="filter" id="filterComplete" autocomplete="off">
       <label class="btn btn-outline-success" for="filterComplete">Complete</label>
-      
+      <input type="radio" class="btn-check" name="filter" id="filterOngoing" autocomplete="off">
+      <label class="btn btn-outline-primary" for="filterOngoing">Ongoing</label>
       <input type="radio" class="btn-check" name="filter" id="filterUnknown" autocomplete="off">
       <label class="btn btn-outline-danger" for="filterUnknown">Unknown</label>
     </div>
@@ -864,7 +865,10 @@ document.addEventListener('DOMContentLoaded', function() {
           showByFilter = status === 'complete' && seriesStatus === 'ended';
           break;
         case 'filterIncomplete':
-          showByFilter = status === 'incomplete' || seriesStatus === 'ongoing';
+          showByFilter = status === 'incomplete';
+          break;
+        case 'filterOngoing':
+          showByFilter = status === 'complete' && seriesStatus === 'ongoing';
           break;
         case 'filterUnknown':
           showByFilter = status === 'unknown';
