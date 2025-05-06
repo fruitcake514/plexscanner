@@ -26,19 +26,58 @@
       margin-bottom: 1.5rem;
       border: none;
       border-radius: 12px;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
       background-color: var(--card-bg);
-      transition: transform 0.2s;
+      transition: all 0.3s ease;
+      cursor: pointer;
+      overflow: hidden;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
     }
     
     .card:hover {
       transform: translateY(-5px);
+      box-shadow: 0 12px 20px rgba(0, 0, 0, 0.3);
+    }
+    
+    .card-img-top-container {
+      position: relative;
+      overflow: hidden;
+      aspect-ratio: 2/3;
+      max-height: 230px;
+    }
+    
+    .card-img-top {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.5s ease;
+    }
+    
+    .card:hover .card-img-top {
+      transform: scale(1.05);
+    }
+    
+    .card-overlay {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1;
     }
     
     .card-header {
       font-weight: 600;
       border-radius: 12px 12px 0 0 !important;
       padding: 0.75rem 1.25rem;
+    }
+    
+    .card-body {
+      padding: 0.75rem;
+    }
+    
+    .missing-badge {
+      margin: 0.25rem 0;
     }
     
     .badge-pill {
@@ -122,9 +161,8 @@
     }
     
     .series-badge {
-      font-size: 0.8rem;
-      margin-left: 0.5rem;
-      vertical-align: middle;
+      font-size: 0.7rem;
+      padding: 0.35em 0.65em;
     }
     
     .scan-info {
@@ -171,8 +209,21 @@
     
     .show-title {
       display: flex;
+      flex-direction: column;
       align-items: center;
-      justify-content: space-between;
+      justify-content: center;
+      gap: 0.25rem;
+    }
+    
+    .show-name {
+      font-weight: 600;
+      font-size: 1rem;
+      margin-bottom: 0.25rem;
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     
     .tool-tip {
@@ -185,9 +236,190 @@
       color: #adb5bd;
     }
     
+    /* Modal styles */
+    .show-detail-modal {
+      background-color: rgba(0, 0, 0, 0.85);
+    }
+    
+    .modal-content {
+      background-color: var(--card-bg);
+      border-radius: 16px;
+      border: none;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      overflow: hidden;
+    }
+    
+    .modal-header {
+      border-bottom-color: rgba(255, 255, 255, 0.1);
+    }
+    
+    .modal-footer {
+      border-top-color: rgba(255, 255, 255, 0.1);
+    }
+    
+    .show-backdrop {
+      position: relative;
+      width: 100%;
+      min-height: 200px;
+      background-position: center;
+      background-size: cover;
+      border-radius: 12px;
+      margin-bottom: 20px;
+    }
+    
+    .show-backdrop::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.3), rgba(0,0,0,0.8));
+      border-radius: 12px;
+    }
+    
+    .show-poster-container {
+      margin-top: -100px;
+      margin-bottom: 20px;
+      position: relative;
+      z-index: 10;
+    }
+    
+    .show-poster {
+      width: 180px;
+      height: 270px;
+      object-fit: cover;
+      border-radius: 8px;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+      border: 3px solid var(--card-bg);
+    }
+    
+    .show-info {
+      margin-top: 20px;
+    }
+    
+    .show-overview {
+      margin-bottom: 25px;
+      line-height: 1.6;
+    }
+    
+    .show-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      margin-bottom: 25px;
+    }
+    
+    .show-meta-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    
+    .meta-value {
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin-bottom: 5px;
+    }
+    
+    .meta-label {
+      font-size: 0.8rem;
+      color: #adb5bd;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    
+    .season-list {
+      margin-top: 30px;
+    }
+    
+    .season-header {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-bottom: 15px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .episode-list {
+      max-height: 300px;
+      overflow-y: auto;
+      border-radius: 8px;
+    }
+    
+    .episode-item {
+      padding: 10px 15px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      display: flex;
+      align-items: center;
+      transition: background-color 0.2s;
+    }
+    
+    .episode-item:hover {
+      background-color: rgba(255, 255, 255, 0.05);
+    }
+    
+    .episode-exists {
+      border-left: 3px solid var(--complete-color);
+    }
+    
+    .episode-missing {
+      border-left: 3px solid var(--warning-color);
+    }
+    
+    .episode-future {
+      border-left: 3px solid #0dcaf0;
+      opacity: 0.8;
+    }
+    
+    .episode-number {
+      flex: 0 0 80px;
+      font-weight: 600;
+      color: var(--accent-color);
+    }
+    
+    .episode-details {
+      flex: 1;
+      padding-right: 10px;
+    }
+    
+    .episode-title {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    
+    .episode-meta {
+      font-size: 0.85rem;
+      color: #adb5bd;
+    }
+    
+    .air-date, .resolution, .status-indicator {
+      display: inline-block;
+      margin-right: 10px;
+    }
+    
+    .no-poster-placeholder {
+      display: flex;
+      height: 100%;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background-color: #2d2d2d;
+      color: #adb5bd;
+    }
+    
     @media (max-width: 767.98px) {
       .card-columns {
         column-count: 1;
+      }
+      
+      .show-poster-container {
+        margin-top: -60px;
+      }
+      
+      .show-poster {
+        width: 120px;
+        height: 180px;
       }
     }
   </style>
@@ -215,8 +447,14 @@
         <div class="scan-info" id="scanStatus">Starting scan...</div>
         <div class="scan-info" id="scanProgress">0%</div>
       </div>
-      <div class="progress">
+      <div class="progress mb-2">
         <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" id="scanProgressBar" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+      </div>
+      <div class="text-center">
+        <button class="btn btn-danger btn-sm" id="stopScanBtn">
+          <i class="bi bi-stop-fill"></i> Stop Scan
+        </button>
+        <small class="text-muted ms-2">Progress so far will be saved</small>
       </div>
     </div>
 
@@ -225,7 +463,7 @@
       <div class="col-md-3 stats-box">
         <div class="stats-number text-primary" id="totalShows">{{ results|length }}</div>
         <div class="stats-label">Total Shows</div>
-      </div>
+      </div>      
       <div class="col-md-3 stats-box">
         <div class="stats-number text-success" id="completeShows">{{ results.values()|selectattr('status', 'equalto', 'Complete')|list|length }}</div>
         <div class="stats-label">Complete</div>
@@ -270,63 +508,78 @@
       {% endif %}
 
       {% for title, data in results.items() %}
-      <div class="col-md-6 col-lg-4 show-card" 
+      {% if not title.startswith('_') and data is mapping %}
+      <div class="col-6 col-md-4 col-lg-3 col-xl-2 show-card" 
            data-status="{{ data.status|lower }}" 
            data-series-status="{{ data.series_status|lower }}" 
            data-title="{{ title|lower }}">
-        <div class="card">
-          <div class="card-header d-flex justify-content-between align-items-center">
-            <div class="show-title">
-              <span>{{ title }}</span>
-              {% if data.series_status == "Ongoing" %}
-              <span class="badge bg-info series-badge">{{ data.series_status }}</span>
-              {% elif data.series_status == "Ended" %}
-              <span class="badge bg-secondary series-badge">{{ data.series_status }}</span>
-              {% else %}
-              <span class="badge bg-warning series-badge">{{ data.series_status }}</span>
-              {% endif %}
+        <div class="card" onclick="showDetails('{{ title }}')">
+          {% if data.poster_url %}
+          <div class="card-img-top-container">
+            <img src="{{ data.poster_url }}" class="card-img-top" alt="{{ title }} poster">
+            <div class="card-overlay">
+              <span class="badge status-badge 
+                  {% if data.status == 'Complete' %}status-complete
+                  {% elif data.status == 'Incomplete' %}status-incomplete
+                  {% else %}status-unknown{% endif %}">
+                {{ data.status }}
+              </span>
             </div>
-            <span class="badge status-badge 
-                {% if data.status == 'Complete' %}status-complete
-                {% elif data.status == 'Incomplete' %}status-incomplete
-                {% else %}status-unknown{% endif %}">
-              {{ data.status }}
-            </span>
           </div>
-          <div class="card-body">
-            {% if data.missing_episodes %}
-            <div>
-              <p class="d-flex justify-content-between">
-                <strong>Missing Episodes:</strong> 
-                <span class="badge bg-warning text-dark">{{ data.missing_episodes|length }}</span>
-              </p>
-              <div class="missing-list">
-                <ul class="list-group list-group-flush">
-                  {% for s, e in data.missing_episodes[:10] %}
-                  <li class="list-group-item bg-transparent">S{{ "%02d"|format(s) }}E{{ "%02d"|format(e) }}</li>
-                  {% endfor %}
-                  {% if data.missing_episodes|length > 10 %}
-                  <li class="list-group-item bg-transparent text-muted">
-                    +{{ data.missing_episodes|length - 10 }} more episodes...
-                  </li>
-                  {% endif %}
-                </ul>
+          {% else %}
+          <div class="card-img-top-container no-poster">
+            <div class="no-poster-placeholder">
+              <i class="bi bi-tv fs-1"></i>
+              <p>No Poster</p>
+            </div>
+            <div class="card-overlay">
+              <span class="badge status-badge 
+                  {% if data.status == 'Complete' %}status-complete
+                  {% elif data.status == 'Incomplete' %}status-incomplete
+                  {% else %}status-unknown{% endif %}">
+                {{ data.status }}
+              </span>
+            </div>
+          </div>
+          {% endif %}
+          <div class="card-header text-center">
+            <div class="show-title">
+              <div class="show-name">{{ title }}</div>
+              <div>
+                {% if data.series_status == "Ongoing" %}
+                <span class="badge bg-info series-badge">{{ data.series_status }}</span>
+                {% elif data.series_status == "Ended" %}
+                <span class="badge bg-secondary series-badge">{{ data.series_status }}</span>
+                {% else %}
+                <span class="badge bg-warning series-badge">{{ data.series_status }}</span>
+                {% endif %}
               </div>
+            </div>
+          </div>
+          <div class="card-body text-center">
+            {% if data.missing_episodes %}
+            <div class="missing-badge">
+              <span class="badge bg-warning text-dark p-2">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                {{ data.missing_episodes|length }} Missing Episodes
+              </span>
             </div>
             {% else %}
-            <p class="text-success"><i class="bi bi-check-circle-fill"></i> No missing episodes</p>
+            <p class="text-success"><i class="bi bi-check-circle-fill me-1"></i> Complete</p>
             {% endif %}
-
-            <form class="fix-form" onsubmit="fixMatch(event, '{{ title }}')">
-              <div class="input-group">
-                <input type="text" class="form-control" name="tmdb_id" placeholder="TMDb ID" aria-label="TMDb ID">
-                <button class="btn btn-outline-secondary" type="submit">Fix Match</button>
-              </div>
-              <small class="form-text text-muted">Enter a TMDb ID to manually fix incorrect matches</small>
-            </form>
+            
+            {% if data.future_episodes %}
+            <div class="future-badge mt-2">
+              <span class="badge bg-info p-2">
+                <i class="bi bi-calendar-event me-1"></i>
+                {{ data.future_episodes|length }} Releasing Today or Later
+              </span>
+            </div>
+            {% endif %}
           </div>
         </div>
       </div>
+      {% endif %}
       {% endfor %}
     </div>
 
@@ -335,6 +588,36 @@
       <small id="lastScanTime">
         {% if results %}Last scan: {{ results.get('_last_scan_time', 'Never') }}{% else %}No scan performed yet{% endif %}
       </small>
+    </div>
+  </div>
+
+  <!-- Show Details Modal -->
+  <div class="modal fade show-detail-modal" id="showDetailModal" tabindex="-1" aria-labelledby="showDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="showDetailModalLabel"></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body" id="showDetailContent">
+          <div class="text-center">
+            <div class="spinner-border text-primary" role="status">
+              <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading show details...</p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          <form class="fix-form d-flex" id="modalFixMatchForm" onsubmit="fixMatchFromModal(event)">
+            <input type="hidden" name="show_title" id="modalShowTitle">
+            <div class="input-group">
+              <input type="text" class="form-control" name="tmdb_id" placeholder="TMDb ID" aria-label="TMDb ID">
+              <button class="btn btn-primary" type="submit">Fix Match</button>
+            </div>
+          </form>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -374,6 +657,7 @@
           const progressBar = document.getElementById('scanProgressBar');
           const scanStatus = document.getElementById('scanStatus');
           const scanProgressText = document.getElementById('scanProgress');
+          const stopScanBtn = document.getElementById('stopScanBtn');
           
           // Update progress
           progressBar.style.width = data.progress + '%';
@@ -382,13 +666,19 @@
           
           // Update status message
           let statusMsg = data.status_message;
-          if (data.current_show) {
+          if (data.current_show && !data.stop_requested) {
             statusMsg += ` (${data.processed_shows}/${data.total_shows})`;
           }
           if (data.elapsed_time) {
             statusMsg += ` - Running for ${data.elapsed_time}`;
           }
           scanStatus.textContent = statusMsg;
+          
+          // Handle stop requested state
+          if (data.stop_requested) {
+            stopScanBtn.disabled = true;
+            stopScanBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Stopping...';
+          }
           
           // Check if scan is complete
           if (!data.in_progress && data.progress >= 100) {
@@ -406,11 +696,20 @@
               window.location.reload();
             }, 1500);
           } else if (!data.in_progress) {
-            // Scan failed or was interrupted
-            alert('Scan stopped unexpectedly.');
-            scanInProgress = false;
-            updateScanUI(false);
             clearInterval(statusCheckInterval);
+            
+            if (data.stop_requested) {
+              // Scan was stopped by user
+              scanStatus.textContent = 'Scan stopped. Reloading...';
+              setTimeout(() => {
+                window.location.reload();
+              }, 1500);
+            } else {
+              // Scan failed or was interrupted
+              alert('Scan stopped unexpectedly.');
+              scanInProgress = false;
+              updateScanUI(false);
+            }
           }
         })
         .catch(err => {
@@ -505,41 +804,80 @@
     }
     
     // Search and filter functionality
-    document.addEventListener('DOMContentLoaded', function() {
-      const searchInput = document.getElementById('searchShows');
-      const filterButtons = document.querySelectorAll('input[name="filter"]');
-      const showCards = document.querySelectorAll('.show-card');
+    function stopScan() {
+      if (!scanInProgress) return;
       
-      function filterShows() {
-        const searchTerm = searchInput.value.toLowerCase();
-        const activeFilter = document.querySelector('input[name="filter"]:checked').id;
-        
-        showCards.forEach(card => {
-          const title = card.dataset.title;
-          const status = card.dataset.status;
-          
-          let showBySearch = title.includes(searchTerm);
-          let showByFilter = true;
-          
-          switch(activeFilter) {
-            case 'filterComplete':
-              showByFilter = status === 'complete';
-              break;
-            case 'filterIncomplete':
-              showByFilter = status === 'incomplete';
-              break;
-            case 'filterUnknown':
-              showByFilter = status === 'unknown';
-              break;
-          }
-          
-          if (showBySearch && showByFilter) {
-            card.style.display = '';
-          } else {
-            card.style.display = 'none';
-          }
-        });
+      if (!confirm('Are you sure you want to stop the scan? Progress so far will be saved.')) {
+        return;
       }
+      
+      fetch('/stop-scan')
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            // Update the UI to show stopping state
+            const scanStatus = document.getElementById('scanStatus');
+            scanStatus.textContent = 'Stopping scan... Saving results...';
+            
+            // Continue checking status to see when it completes
+            const checkStopStatus = setInterval(() => {
+              fetch('/scan-status')
+                .then(res => res.json())
+                .then(statusData => {
+                  if (!statusData.in_progress) {
+                    clearInterval(checkStopStatus);
+                    setTimeout(() => {
+                      window.location.reload();
+                    }, 1500);
+                  }
+                });
+            }, 1000);
+          } else {
+            alert(data.error || 'Failed to stop scan.');
+          }
+        })
+        .catch(err => {
+          console.error('Fetch error:', err);
+          alert('Failed to stop scan.');
+        });
+    }
+    
+document.addEventListener('DOMContentLoaded', function() {
+  const searchInput = document.getElementById('searchShows');
+  const filterButtons = document.querySelectorAll('input[name="filter"]');
+  const showCards = document.querySelectorAll('.show-card');
+  
+  function filterShows() {
+    const searchTerm = searchInput.value.toLowerCase();
+    const activeFilter = document.querySelector('input[name="filter"]:checked').id;
+    
+    showCards.forEach(card => {
+      const title = card.dataset.title.toLowerCase();
+      const status = card.dataset.status.toLowerCase();
+      const seriesStatus = card.dataset.seriesStatus.toLowerCase();
+      
+      let showBySearch = title.includes(searchTerm);
+      let showByFilter = true;
+      
+      switch(activeFilter) {
+        case 'filterComplete':
+          showByFilter = status === 'complete' && seriesStatus === 'ended';
+          break;
+        case 'filterIncomplete':
+          showByFilter = status === 'incomplete' || seriesStatus === 'ongoing';
+          break;
+        case 'filterUnknown':
+          showByFilter = status === 'unknown';
+          break;
+      }
+      
+      if (showBySearch && showByFilter) {
+        card.style.display = '';
+      } else {
+        card.style.display = 'none';
+      }
+    });
+  }
       
       // Add event listeners
       searchInput.addEventListener('input', filterShows);
@@ -547,8 +885,9 @@
         btn.addEventListener('change', filterShows);
       });
       
-      // Initialize scan button
+      // Initialize scan buttons
       document.getElementById('run-scan').addEventListener('click', runScan);
+      document.getElementById('stopScanBtn').addEventListener('click', stopScan);
     });
     
     // Update the current time in the footer
@@ -556,6 +895,351 @@
       const now = new Date();
       const timeString = now.toLocaleString();
       document.getElementById('lastScanTime').textContent = 'Last scan: ' + timeString;
+    }
+    
+    // Show Details Modal
+    let showDetailsModal;
+    
+    document.addEventListener('DOMContentLoaded', function() {
+      showDetailsModal = new bootstrap.Modal(document.getElementById('showDetailModal'));
+    });
+    
+    function showDetails(title) {
+      const modalTitle = document.getElementById('showDetailModalLabel');
+      const modalContent = document.getElementById('showDetailContent');
+      const modalShowTitle = document.getElementById('modalShowTitle');
+      
+      // Set the title and show name for form
+      modalTitle.textContent = title;
+      modalShowTitle.value = title;
+      
+      // Show loading state
+      modalContent.innerHTML = `
+        <div class="text-center">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+          <p class="mt-2">Loading details for ${title}...</p>
+        </div>
+      `;
+      
+      // Show the modal
+      showDetailsModal.show();
+      
+      // Fetch show details
+      fetch('/get-show-details?title=' + encodeURIComponent(title))
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            renderShowDetails(title, data.data);
+          } else {
+            modalContent.innerHTML = `
+              <div class="alert alert-danger">
+                Error loading show details: ${data.error || 'Unknown error'}
+              </div>
+            `;
+          }
+        })
+        .catch(err => {
+          console.error('Fetch error:', err);
+          modalContent.innerHTML = `
+            <div class="alert alert-danger">
+              Network error occurred while loading show details.
+            </div>
+          `;
+        });
+    }
+    
+    function renderShowDetails(title, show) {
+      const modalContent = document.getElementById('showDetailContent');
+      const details = show.details || {};
+      
+      // Create HTML for the details
+      let html = `
+        <div class="container-fluid p-0">
+      `;
+      
+      // Add backdrop if available
+      if (details.backdrop_path) {
+        html += `
+          <div class="show-backdrop" style="background-image: url('${details.backdrop_path}'); min-height: 300px;">
+          </div>
+        `;
+      }
+      
+      html += `<div class="row">`;
+      
+      // Poster and basic info column
+      html += `
+        <div class="col-md-4 text-center">
+          <div class="show-poster-container">
+            ${details.poster_path ? 
+              `<img src="${details.poster_path}" class="show-poster" alt="${title} poster">` : 
+              `<div class="show-poster" style="background-color: #2d2d2d; display: flex; justify-content: center; align-items: center;">
+                <i class="bi bi-tv fs-1"></i>
+              </div>`
+            }
+          </div>
+          
+          <div class="show-meta">
+            ${details.first_air_date ? 
+              `<div class="show-meta-item">
+                <div class="meta-value">${details.first_air_date.substring(0, 4)}</div>
+                <div class="meta-label">Year</div>
+              </div>` : ''
+            }
+            
+            ${details.vote_average ? 
+              `<div class="show-meta-item">
+                <div class="meta-value">${details.vote_average.toFixed(1)}</div>
+                <div class="meta-label">Rating</div>
+              </div>` : ''
+            }
+            
+            ${details.number_of_seasons ? 
+              `<div class="show-meta-item">
+                <div class="meta-value">${details.number_of_seasons}</div>
+                <div class="meta-label">Seasons</div>
+              </div>` : ''
+            }
+            
+            ${details.number_of_episodes ? 
+              `<div class="show-meta-item">
+                <div class="meta-value">${details.number_of_episodes}</div>
+                <div class="meta-label">Episodes</div>
+              </div>` : ''
+            }
+          </div>
+          
+          <div class="show-status mt-4">
+            <div class="badge status-badge 
+                ${show.status === 'Complete' ? 'status-complete' : 
+                 show.status === 'Incomplete' ? 'status-incomplete' : 
+                 'status-unknown'}">
+              ${show.status}
+            </div>
+            
+            <div class="badge bg-${
+              show.series_status === 'Ongoing' ? 'info' : 
+              show.series_status === 'Ended' ? 'secondary' : 
+              'warning'
+            } ms-2">
+              ${show.series_status}
+            </div>
+          </div>
+          
+          ${details.networks && details.networks.length > 0 ? 
+            `<div class="networks mt-4">
+              <h6 class="text-muted">Networks</h6>
+              <p>${details.networks.join(', ')}</p>
+            </div>` : ''
+          }
+          
+          ${details.genres && details.genres.length > 0 ? 
+            `<div class="genres mt-3">
+              <h6 class="text-muted">Genres</h6>
+              <div>
+                ${details.genres.map(genre => 
+                  `<span class="badge bg-secondary me-1 mb-1">${genre}</span>`
+                ).join('')}
+              </div>
+            </div>` : ''
+          }
+        </div>
+      `;
+      
+      // Show info and missing episodes column
+      html += `
+        <div class="col-md-8">
+          <div class="show-info">
+            ${details.overview ? 
+              `<div class="show-overview">
+                <h5 class="mb-3">Overview</h5>
+                <p>${details.overview}</p>
+              </div>` : ''
+            }
+            
+            <div class="episodes-section">
+              <h5 class="mb-3">
+                Episodes 
+                ${show.missing_episodes && show.missing_episodes.length > 0 ? 
+                  `<span class="badge bg-warning text-dark ms-2">${show.missing_episodes.length} missing</span>` : 
+                  `<span class="badge bg-success ms-2">Complete</span>`
+                }
+                ${show.future_episodes && show.future_episodes.length > 0 ? 
+                  `<span class="badge bg-info ms-2">${show.future_episodes.length} releasing today+</span>` : 
+                  ``
+                }
+              </h5>
+              
+              ${show.seasons ? 
+                `<div class="accordion" id="seasonsAccordion">
+                  ${Object.keys(show.seasons).sort((a, b) => parseInt(a) - parseInt(b)).map((season, index) => {
+                    const seasonData = show.seasons[season];
+                    const seasonEpisodes = seasonData.episodes || {};
+                    const episodeNums = Object.keys(seasonEpisodes).sort((a, b) => parseInt(a) - parseInt(b));
+                    const missingInSeason = show.missing_by_season && show.missing_by_season[season] ? show.missing_by_season[season].length : 0;
+                    
+                    return `
+                      <div class="accordion-item bg-transparent">
+                        <h2 class="accordion-header" id="season${season}Heading">
+                          <button class="accordion-button ${index === 0 ? '' : 'collapsed'}" type="button" data-bs-toggle="collapse" data-bs-target="#season${season}Collapse" aria-expanded="${index === 0}" aria-controls="season${season}Collapse">
+                            ${seasonData.name || `Season ${season}`}
+                            ${missingInSeason > 0 ? 
+                              `<span class="badge bg-warning text-dark ms-2">${missingInSeason} missing</span>` : 
+                              `<span class="badge bg-success ms-2">Complete</span>`
+                            }
+                          </button>
+                        </h2>
+                        <div id="season${season}Collapse" class="accordion-collapse collapse ${index === 0 ? 'show' : ''}" aria-labelledby="season${season}Heading" data-bs-parent="#seasonsAccordion">
+                          <div class="accordion-body p-0">
+                            <ul class="list-group episode-list">
+                              ${episodeNums.map(episode => {
+                                const ep = seasonEpisodes[episode];
+                                // Determine if this is a future episode (hasn't aired yet)
+                                const isFuture = !ep.has_aired && !ep.exists;
+                                const episodeClass = isFuture ? 'episode-future' :
+                                                   (ep.exists ? 'episode-exists' : 'episode-missing');
+                                return `
+                                  <li class="list-group-item bg-transparent episode-item ${episodeClass}">
+                                    <div class="episode-number">
+                                      S${season.toString().padStart(2, '0')}E${episode.toString().padStart(2, '0')}
+                                    </div>
+                                    <div class="episode-details">
+                                      <div class="episode-title">${ep.title}</div>
+                                      <div class="episode-meta">
+                                        ${ep.air_date ? `<span class="air-date"><i class="bi bi-calendar3"></i> ${ep.air_date}</span>` : ''}
+                                        ${ep.exists && ep.resolution ? 
+                                          `<span class="resolution ms-2"><i class="bi bi-badge-hd-fill"></i> ${ep.resolution}</span>` : ''
+                                        }
+                                        <span class="status-indicator ms-2">
+                                          ${ep.exists ? 
+                                            `<span class="text-success"><i class="bi bi-check-circle-fill"></i> In Library</span>` : 
+                                            (isFuture ? 
+                                              `<span class="text-info"><i class="bi bi-calendar-event"></i> Today or Upcoming</span>` :
+                                              `<span class="text-warning"><i class="bi bi-exclamation-triangle-fill"></i> Missing</span>`
+                                            )
+                                          }
+                                        </span>
+                                      </div>
+                                    </div>
+                                    ${ep.still_path ? 
+                                      `<div class="episode-image">
+                                        <img src="https://image.tmdb.org/t/p/w300${ep.still_path}" alt="Episode ${episode}">
+                                      </div>` : ''
+                                    }
+                                  </li>
+                                `;
+                              }).join('')}
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>` : 
+                
+                show.missing_episodes && show.missing_episodes.length > 0 ? 
+                `<div class="alert alert-warning">
+                  <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                  Missing episodes detected, but detailed episode information is unavailable.
+                  <ul class="list-group episode-list mt-3">
+                    ${show.missing_episodes.map(([season, episode]) => `
+                      <li class="list-group-item bg-transparent episode-item episode-missing">
+                        <div class="episode-number">S${season.toString().padStart(2, '0')}E${episode.toString().padStart(2, '0')}</div>
+                        <div class="episode-details">
+                          <div class="episode-title">Unknown Episode</div>
+                          <div class="episode-meta">
+                            <span class="status-indicator">
+                              <span class="text-warning"><i class="bi bi-exclamation-triangle-fill"></i> Missing</span>
+                            </span>
+                          </div>
+                        </div>
+                      </li>
+                    `).join('')}
+                  </ul>
+                </div>` : 
+                
+                `<div class="complete-status text-center mt-5">
+                  <i class="bi bi-check-circle-fill text-success fs-1"></i>
+                  <h5 class="mt-3 text-success">No Missing Episodes</h5>
+                  <p class="text-muted">This show is complete in your library</p>
+                </div>`
+              }
+            </div>
+          </div>
+        </div>
+      `;
+      
+      html += `</div></div>`;
+      
+      // Set the content
+      modalContent.innerHTML = html;
+    }
+    
+    function fixMatchFromModal(event) {
+      event.preventDefault();
+      const form = event.target;
+      const title = form.querySelector('input[name="show_title"]').value;
+      const tmdbIdInput = form.querySelector('input[name="tmdb_id"]');
+      const tmdb_id = tmdbIdInput.value.trim();
+      
+      if (!tmdb_id) {
+        tmdbIdInput.classList.add('is-invalid');
+        return;
+      }
+      
+      const formData = new FormData();
+      formData.append('title', title);
+      formData.append('tmdb_id', tmdb_id);
+      
+      // Disable form while submitting
+      const submitBtn = form.querySelector('button[type="submit"]');
+      const originalBtnText = submitBtn.innerHTML;
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Updating...';
+      
+      fetch('/fix-match', {
+        method: 'POST',
+        body: formData
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          // Show success message
+          const alertEl = document.createElement('div');
+          alertEl.className = 'alert alert-success mt-2';
+          alertEl.textContent = 'Match updated successfully! Reloading...';
+          document.getElementById('showDetailContent').appendChild(alertEl);
+          
+          setTimeout(() => {
+            window.location.reload();
+          }, 1000);
+        } else {
+          // Show error message
+          const alertEl = document.createElement('div');
+          alertEl.className = 'alert alert-danger mt-2';
+          alertEl.textContent = 'Error: ' + (data.error || 'Unknown error');
+          document.getElementById('showDetailContent').appendChild(alertEl);
+          
+          // Reset button
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = originalBtnText;
+        }
+      })
+      .catch(err => {
+        console.error('Fetch error:', err);
+        
+        // Show error message
+        const alertEl = document.createElement('div');
+        alertEl.className = 'alert alert-danger mt-2';
+        alertEl.textContent = 'Network error occurred. Please try again.';
+        document.getElementById('showDetailContent').appendChild(alertEl);
+        
+        // Reset button
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalBtnText;
+      });
     }
   </script>
 </body>
