@@ -1,0 +1,16 @@
+{
+  "plex": {
+    "url": "http://xxx.xxx.xxx.xxx",
+    "token": "xxxxxxxxx",
+    "library_section": "TV Shows"
+  },
+  "tmdb": {
+    "api_key": "xxxxxxxxx"
+  },
+  "app": {
+    "port": 8080,
+    "debug": true,
+    "host": "0.0.0.0",
+    "scan_results_path": "scan_results.json"
+  }
+}
