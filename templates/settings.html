@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Plex TMDb Scanner{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold text-white mb-6"><i class="bi bi-gear mr-2"></i> Settings</h1>
+
+    <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+        <form action="{{ url_for('save_settings') }}" method="POST">
+            <div class="mb-5">
+                <h2 class="text-xl font-semibold text-white mb-4 border-b border-gray-700 pb-2">Plex Settings</h2>
+                <div class="mb-4">
+                    <label for="plex_url" class="block text-gray-300 text-sm font-bold mb-2">Plex URL:</label>
+                    <input type="text" id="plex_url" name="plex_url" value="{{ config.plex.url }}" required
+                           class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
+                </div>
+                <div class="mb-4">
+                    <label for="plex_token" class="block text-gray-300 text-sm font-bold mb-2">Plex Token:</label>
+                    <input type="text" id="plex_token" name="plex_token" value="{{ config.plex.token }}" required
+                           class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
+                </div>
+                <div class="mb-4">
+                    <label for="plex_library_id" class="block text-gray-300 text-sm font-bold mb-2">Plex TV Show Library Name:</label>
+                    <input type="text" id="plex_library_id" name="plex_library_id" value="{{ config.plex.library_section }}" required
+                           class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
+                </div>
+                <div class="mb-4">
+                    <label for="plex_movie_library_id" class="block text-gray-300 text-sm font-bold mb-2">Plex Movie Library Name:</label>
+                    <input type="text" id="plex_movie_library_id" name="plex_movie_library_id" value="{{ config.plex.movie_library_section }}" required
+                           class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
+                </div>
+            </div>
+
+            <div class="mb-5">
+                <h2 class="text-xl font-semibold text-white mb-4 border-b border-gray-700 pb-2">TMDb Settings</h2>
+                <div class="mb-4">
+                    <label for="tmdb_api_key" class="block text-gray-300 text-sm font-bold mb-2">TMDb API Key:</label>
+                    <input type="text" id="tmdb_api_key" name="tmdb_api_key" value="{{ config.tmdb.api_key }}" required
+                           class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
+                </div>
+            </div>
+
+            <div class="flex items-center justify-between">
+                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline">
+                    Save Settings
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
