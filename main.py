@@ -7,8 +7,24 @@ from datetime import datetime
 import time
 import threading
 import random
+from urllib.parse import unquote
+from database import init_db, DATABASE_PATH
+import sqlite3
+import logging
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static')
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Custom Jinja2 filter for strptime
+def datetime_strptime(value, format):
+    return datetime.strptime(value, format)
+
+app.jinja_env.filters['strptime'] = datetime_strptime
+
+# Initialize the database
+init_db()
 
 # Load configuration
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'config.json')
@@ -16,7 +32,7 @@ with open(CONFIG_PATH, 'r') as config_file:
     CONFIG = json.load(config_file)
 
 # Set paths
-JSON_PATH = os.path.join(os.path.dirname(__file__), CONFIG['app']['scan_results_path'])
+# JSON_PATH = os.path.join(os.path.dirname(__file__), CONFIG['app']['scan_results_path'])
 
 # Global variables for scan status
 SCAN_STATUS = {
@@ -30,6 +46,109 @@ SCAN_STATUS = {
     'stop_requested': False,
     'partial_results': {}
 }
+
+MOVIE_SCAN_STATUS = {
+    'in_progress': False,
+    'progress': 0,
+    'current_collection': '',
+    'total_collections': 0,
+    'processed_collections': 0,
+    'status_message': '',
+    'start_time': None,
+    'stop_requested': False,
+}
+
+# === DATABASE FUNCTIONS ===
+def get_db_connection():
+    conn = sqlite3.connect(DATABASE_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def insert_tv_show(title, tmdb_id, poster_url, overview, first_air_date, status, series_status, number_of_seasons, number_of_episodes, genres, vote_average, networks):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT OR REPLACE INTO tv_shows (title, tmdb_id, poster_url, overview, first_air_date, status, series_status, number_of_seasons, number_of_episodes, genres, vote_average, networks, last_updated)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (title, tmdb_id, poster_url, overview, first_air_date, status, series_status, number_of_seasons, number_of_episodes, json.dumps(genres), vote_average, json.dumps(networks), datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+    conn.commit()
+    tv_show_id = cursor.lastrowid
+    conn.close()
+    return tv_show_id
+
+def get_tv_show_by_title(title):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM tv_shows WHERE title = ?", (title,))
+    show = cursor.fetchone()
+    conn.close()
+    return show
+
+def get_tv_show_by_tmdb_id(tmdb_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM tv_shows WHERE tmdb_id = ?", (tmdb_id,))
+    show = cursor.fetchone()
+    conn.close()
+    return show
+
+def insert_season(tv_show_id, season_number, name, overview, poster_path, air_date):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT OR REPLACE INTO seasons (tv_show_id, season_number, name, overview, poster_path, air_date)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (tv_show_id, season_number, name, overview, poster_path, air_date))
+    conn.commit()
+    season_id = cursor.lastrowid
+    conn.close()
+    return season_id
+
+def get_season_by_tv_show_id_and_number(tv_show_id, season_number):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM seasons WHERE tv_show_id = ? AND season_number = ?", (tv_show_id, season_number))
+    season = cursor.fetchone()
+    conn.close()
+    return season
+
+def insert_episode(season_id, episode_number, name, air_date, overview, still_path, exists_in_plex, resolution, file_path):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT OR REPLACE INTO episodes (season_id, episode_number, name, air_date, overview, still_path, exists_in_plex, resolution, file_path)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (season_id, episode_number, name, air_date, overview, still_path, exists_in_plex, resolution, file_path))
+    conn.commit()
+    conn.close()
+
+def get_episodes_by_season_id(season_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM episodes WHERE season_id = ?", (season_id,))
+    episodes = cursor.fetchall()
+    conn.close()
+    return episodes
+
+def insert_movie(title, tmdb_id, poster_url, overview, release_date, studio):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT OR REPLACE INTO movies (title, tmdb_id, poster_url, overview, release_date, studio, last_updated)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (title, tmdb_id, poster_url, overview, release_date, studio, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+    conn.commit()
+    movie_id = cursor.lastrowid
+    conn.close()
+    return movie_id
+
+def get_movie_by_title(title):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM movies WHERE title = ?", (title,))
+    movie = cursor.fetchone()
+    conn.close()
+    return movie
 
 # === UTILITIES ===
 def get_tmdb_id(plex_show):
@@ -122,6 +241,40 @@ def get_series_status(tmdb_id):
     except:
         return "Unknown"
 
+def get_movie_tmdb_id(plex_movie):
+    for guid in plex_movie.guids:
+        if 'tmdb' in guid.id:
+            return guid.id.split('//')[1]
+    search_url = f'https://api.themoviedb.org/3/search/movie?api_key={CONFIG["tmdb"]["api_key"]}&query={requests.utils.quote(plex_movie.title)}'
+    try:
+        r = requests.get(search_url)
+        r.raise_for_status()
+        results = r.json()['results']
+        if results:
+            return str(results[0]['id'])
+    except:
+        pass
+    return None
+
+def get_movie_details(tmdb_id):
+    if not tmdb_id:
+        return None
+    url = f'https://api.themoviedb.org/3/movie/{tmdb_id}?api_key={CONFIG["tmdb"]["api_key"]}'
+    try:
+        r = requests.get(url)
+        r.raise_for_status()
+        data = r.json()
+        studio = data['production_companies'][0]['name'] if data['production_companies'] else None
+        return {
+            'title': data.get('title'),
+            'poster_path': f'https://image.tmdb.org/t/p/w500{data.get("poster_path")}' if data.get('poster_path') else None,
+            'overview': data.get('overview'),
+            'release_date': data.get('release_date'),
+            'studio': studio
+        }
+    except:
+        return None
+
 def fetch_tmdb_episodes(tmdb_id):
     eps = set()
     try:
@@ -207,33 +360,36 @@ def run_scan_thread():
         SCAN_STATUS['status_message'] = 'Connecting to Plex server...'
         SCAN_STATUS['start_time'] = datetime.now()
         SCAN_STATUS['stop_requested'] = False
-        SCAN_STATUS['partial_results'] = {}
         
-        # Connect to Plex
+        app.logger.debug("Attempting to connect to Plex server...")
         plex = PlexServer(CONFIG['plex']['url'], CONFIG['plex']['token'])
+        app.logger.debug("Connected to Plex server.")
+        
         SCAN_STATUS['status_message'] = 'Fetching TV Shows...'
         shows = plex.library.section(CONFIG['plex']['library_section']).all()
+        app.logger.debug(f"Fetched {len(shows)} TV shows from Plex.")
         
+        # Load ignored shows
+        ignored_shows_path = os.path.join(os.path.dirname(__file__), 'ignore.json')
+        ignored = []
+        if os.path.exists(ignored_shows_path):
+            with open(ignored_shows_path, 'r') as f:
+                ignored = json.load(f)
+        
+        # Filter out ignored shows
+        shows = [s for s in shows if s.title not in ignored]
+        app.logger.debug(f"After filtering ignored shows, {len(shows)} remain.")
+
         SCAN_STATUS['total_shows'] = len(shows)
         SCAN_STATUS['processed_shows'] = 0
-        results = {}
         
-        # Load existing results if available
-        if os.path.exists(JSON_PATH):
-            try:
-                with open(JSON_PATH, 'r') as f:
-                    existing_results = json.load(f)
-                    # Copy any existing special keys (stats, timestamp)
-                    for key in existing_results:
-                        if key.startswith('_'):
-                            results[key] = existing_results[key]
-            except:
-                pass
-        
+        app.logger.debug("Starting TV show processing loop.")
         for show in shows:
+            app.logger.debug(f"Processing show: {show.title}")
             # Check if stop was requested
             if SCAN_STATUS['stop_requested']:
-                SCAN_STATUS['status_message'] = 'Scan stopped by user. Saving partial results...'
+                SCAN_STATUS['status_message'] = 'Scan stopped by user.'
+                app.logger.debug("Scan stop requested. Breaking loop.")
                 break
                 
             SCAN_STATUS['current_show'] = show.title
@@ -242,37 +398,35 @@ def run_scan_thread():
             # Get TMDB ID
             SCAN_STATUS['status_message'] = f'Finding TMDb match for {show.title}...'
             tmdb_id = get_tmdb_id(show)
+            app.logger.debug(f"TMDb ID for {show.title}: {tmdb_id}")
             
-            # Get poster
             poster_url = None
             details = None
             if tmdb_id:
                 poster_url = get_show_poster(tmdb_id)
                 details = get_show_details(tmdb_id)
+                app.logger.debug(f"Fetched TMDB details for {show.title}.")
             
             if not tmdb_id:
-                results[show.title] = {
-                    'status': 'Unknown',
-                    'series_status': 'Unknown',
-                    'missing_episodes': [],
-                    'poster_url': poster_url,
-                    'details': None
-                }
+                app.logger.debug(f"No TMDb ID found for {show.title}. Inserting with Unknown status.")
+                # Insert into DB with unknown status
+                insert_tv_show(show.title, None, None, None, None, 'Unknown', 'Unknown', 0, 0, [], 0.0, [])
                 SCAN_STATUS['processed_shows'] += 1
                 SCAN_STATUS['progress'] = (SCAN_STATUS['processed_shows'] / SCAN_STATUS['total_shows']) * 100
-                
-                # Save partial results
-                SCAN_STATUS['partial_results'] = results.copy()
                 continue
+            
+            app.logger.debug(f"Processing {show.title} (TMDb ID: {tmdb_id})")
             
             # Get series status
             SCAN_STATUS['status_message'] = f'Checking series status for {show.title}...'
             series_status = get_series_status(tmdb_id)
+            app.logger.debug(f"DEBUG: Series status for {show.title}: {series_status}")
             
             # Compare episodes
             SCAN_STATUS['status_message'] = f'Comparing episodes for {show.title}...'
             existing, existing_episode_details = get_existing_episodes(show)
             all_eps = fetch_tmdb_episodes(tmdb_id)
+            app.logger.debug(f"DEBUG: Compared episodes for {show.title}. Existing: {len(existing)}, All TMDB: {len(all_eps)}")
             
             # Filter out future episodes when calculating missing episodes
             aired_missing = []
@@ -280,11 +434,9 @@ def run_scan_thread():
             
             # Process missing episodes
             for season_num, ep_num in sorted(list(all_eps - existing)):
-                # Get episode air date
                 air_date = None
                 has_aired = True
                 
-                # Check if we have season data to determine air date
                 season_details = get_season_details(tmdb_id, season_num)
                 if season_details and 'episodes' in season_details:
                     for ep in season_details.get('episodes', []):
@@ -293,9 +445,7 @@ def run_scan_thread():
                             if air_date:
                                 try:
                                     air_date_obj = datetime.strptime(air_date, '%Y-%m-%d')
-                                    # Set to start of day for today's date
                                     today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-                                    # Consider episodes released today as upcoming (not aired yet)
                                     has_aired = air_date_obj < today_start
                                 except:
                                     has_aired = True
@@ -308,171 +458,260 @@ def run_scan_thread():
             
             missing = aired_missing
             
-            # Organize missing episodes by season
-            missing_by_season = {}
-            for s, e in missing:
-                if s not in missing_by_season:
-                    missing_by_season[s] = []
-                missing_by_season[s].append(e)
-            
-            # Get all seasons from TMDb
-            all_seasons = set([s for s, _ in all_eps])
-            seasons_data = {}
-            
-            for season_num in all_seasons:
-                # Get detailed season info
+            # Determine overall status
+            overall_status = 'Complete' if not missing else 'Incomplete'
+
+            # Refine series status based on missing episodes and future episodes
+            if future_episodes:
+                display_series_status = f"{overall_status} - Upcoming"
+            elif series_status == "Returning Series":
+                display_series_status = f"{overall_status} - Ongoing"
+            elif series_status in ["Ended", "Canceled"]:
+                display_series_status = f"{overall_status} - {series_status}"
+            else:
+                display_series_status = "Unknown"
+
+            app.logger.debug(f"DEBUG: Inserting/Updating TV Show {show.title} in DB.")
+            tv_show_id = insert_tv_show(
+                show.title,
+                tmdb_id,
+                poster_url,
+                details.get('overview') if details else None,
+                details.get('first_air_date') if details else None,
+                overall_status,
+                display_series_status,
+                details.get('number_of_seasons') if details else 0,
+                details.get('number_of_episodes') if details else 0,
+                details.get('genres') if details else [],
+                details.get('vote_average') if details else 0.0,
+                details.get('networks') if details else []
+            )
+            app.logger.debug(f"DEBUG: TV Show {show.title} (ID: {tv_show_id}) inserted/updated.")
+
+            app.logger.debug(f"DEBUG: Inserting/Updating Seasons and Episodes for {show.title}.")
+            # Insert/Update Seasons and Episodes
+            unique_season_nums = sorted(list(set([s for s, e in all_eps])))
+            for season_num in unique_season_nums:
                 season_details = get_season_details(tmdb_id, season_num)
-                
-                if season_details and 'episodes' in season_details:
-                    # Create a dictionary of episodes
-                    season_episodes = {}
-                    
+                if season_details:
+                    season_id = insert_season(
+                        tv_show_id,
+                        season_num,
+                        season_details.get('name'),
+                        season_details.get('overview'),
+                        season_details.get('poster_path'),
+                        season_details.get('air_date')
+                    )
                     for ep in season_details.get('episodes', []):
-                        episode_num = ep.get('episode_number')
+                        episode_num = int(ep.get('episode_number', 0))
+                        exists_in_plex = (season_num, episode_num) in existing
+                        resolution = existing_episode_details.get(season_num, {}).get(episode_num, {}).get('resolution')
+                        file_path = existing_episode_details.get(season_num, {}).get(episode_num, {}).get('file')
                         
-                        # Check if episode has aired yet
-                        air_date = ep.get('air_date')
-                        has_aired = True
-                        if air_date:
-                            try:
-                                air_date_obj = datetime.strptime(air_date, '%Y-%m-%d')
-                                # Set to start of day for today's date
-                                today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-                                # Consider episodes released today as upcoming (not aired yet)
-                                has_aired = air_date_obj < today_start
-                            except:
-                                has_aired = True  # Default to assuming it has aired if date parsing fails
-                        
-                        # Common episode data
-                        episode_data = {
-                            'title': ep.get('name', f'Episode {episode_num}'),
-                            'air_date': air_date,
-                            'overview': ep.get('overview'),
-                            'still_path': ep.get('still_path'),
-                            'episode_number': episode_num,
-                            'exists': (season_num, episode_num) in existing,
-                            'has_aired': has_aired
-                        }
-                        
-                        # Add details for existing episodes
-                        if episode_data['exists'] and season_num in existing_episode_details and episode_num in existing_episode_details[season_num]:
-                            episode_data.update(existing_episode_details[season_num][episode_num])
-                        
-                        # Add to our episodes dictionary
-                        season_episodes[episode_num] = episode_data
-                    
-                    seasons_data[season_num] = {
-                        'name': season_details.get('name', f'Season {season_num}'),
-                        'overview': season_details.get('overview'),
-                        'poster_path': season_details.get('poster_path'),
-                        'episodes': season_episodes,
-                    }
-            
-            # Organize future episodes by season
-            future_by_season = {}
-            for s, e in future_episodes:
-                if s not in future_by_season:
-                    future_by_season[s] = []
-                future_by_season[s].append(e)
-            
-            results[show.title] = {
-                'status': 'Complete' if not missing else 'Incomplete',
-                'series_status': series_status,
-                'missing_episodes': missing,
-                'missing_by_season': missing_by_season,
-                'future_episodes': future_episodes,
-                'future_by_season': future_by_season,
-                'tmdb_id': tmdb_id,
-                'poster_url': poster_url,
-                'details': details,
-                'seasons': seasons_data
-            }
+                        insert_episode(
+                            season_id,
+                            episode_num,
+                            ep.get('name'),
+                            ep.get('air_date'),
+                            ep.get('overview'),
+                            ep.get('still_path'),
+                            exists_in_plex,
+                            resolution,
+                            file_path
+                        )
+            app.logger.debug(f"DEBUG: Seasons and Episodes for {show.title} inserted/updated.")
             
             SCAN_STATUS['processed_shows'] += 1
             SCAN_STATUS['progress'] = (SCAN_STATUS['processed_shows'] / SCAN_STATUS['total_shows']) * 100
+            app.logger.debug(f"DEBUG: Progress for {show.title}: {SCAN_STATUS['progress']}%")
             
-            # Save partial results after each show
-            SCAN_STATUS['partial_results'] = results.copy()
-            
-            # Add a small delay to prevent rate limiting and to make progress visible
             time.sleep(random.uniform(0.2, 0.5))
         
-        # Add timestamp to results
-        results['_last_scan_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
-        # Add stats to results
-        complete_count = sum(1 for data in results.values() if isinstance(data, dict) and data.get('status') == 'Complete')
-        incomplete_count = sum(1 for data in results.values() if isinstance(data, dict) and data.get('status') == 'Incomplete')
-        unknown_count = sum(1 for data in results.values() if isinstance(data, dict) and data.get('status') == 'Unknown')
-        
-        results['_stats'] = {
-            'complete': complete_count,
-            'incomplete': incomplete_count,
-            'unknown': unknown_count,
-            'total': complete_count + incomplete_count + unknown_count
-        }
-        
-        # Save results
-        SCAN_STATUS['status_message'] = 'Saving results...'
-        with open(JSON_PATH, 'w') as f:
-            json.dump(results, f, indent=2)
-        
+        # Update scan status message
         if SCAN_STATUS['stop_requested']:
             SCAN_STATUS['status_message'] = f'Scan stopped by user. Processed {SCAN_STATUS["processed_shows"]} of {SCAN_STATUS["total_shows"]} shows.'
         else:
-            SCAN_STATUS['status_message'] = f'Scan complete. Found {complete_count} complete, {incomplete_count} incomplete, {unknown_count} unknown shows.'
+            SCAN_STATUS['status_message'] = 'Scan complete.'
             SCAN_STATUS['progress'] = 100
         
-        # Wait a moment before finishing
         time.sleep(1)
     except Exception as e:
         SCAN_STATUS['status_message'] = f'Error: {str(e)}'
-        
-        # Save partial results on error
-        if SCAN_STATUS['partial_results']:
-            try:
-                with open(JSON_PATH, 'w') as f:
-                    json.dump(SCAN_STATUS['partial_results'], f, indent=2)
-            except:
-                pass
+        app.logger.error(f"ERROR: Scan failed with exception: {e}")
     finally:
         SCAN_STATUS['in_progress'] = False
         SCAN_STATUS['stop_requested'] = False
 
 @app.route('/')
 def index():
-    if os.path.exists(JSON_PATH):
-        with open(JSON_PATH, 'r') as f:
-            results = json.load(f)
-    else:
-        results = {}
-    return render_template('index.html', results=results)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM tv_shows")
+    shows_data = cursor.fetchall()
+    conn.close()
+
+    results = {}
+    total_shows = len(shows_data)
+    incomplete_shows = 0
+    complete_shows = 0
+    unknown_shows = 0
+
+    for show in shows_data:
+        show_dict = dict(show)
+        if show_dict['status'] == 'Incomplete':
+            incomplete_shows += 1
+        elif show_dict['status'] == 'Complete':
+            complete_shows += 1
+        elif show_dict['status'] == 'Unknown':
+            unknown_shows += 1
+        
+        # Convert genres and networks back to list from JSON string
+        if show_dict['genres']:
+            show_dict['genres'] = json.loads(show_dict['genres'])
+        if show_dict['networks']:
+            show_dict['networks'] = json.loads(show_dict['networks'])
+        results[show_dict['title']] = show_dict
+
+    ignored_shows_path = os.path.join(os.path.dirname(__file__), 'ignore.json')
+    ignored = []
+    if os.path.exists(ignored_shows_path):
+        with open(ignored_shows_path, 'r') as f:
+            ignored = json.load(f)
+
+    return render_template('index.html', 
+                           results=results, 
+                           ignored=ignored,
+                           total_shows=total_shows,
+                           incomplete_shows=incomplete_shows,
+                           complete_shows=complete_shows,
+                           unknown_shows=unknown_shows)
 
 @app.route('/show/<path:title>')
 def show_details(title):
-    if os.path.exists(JSON_PATH):
-        with open(JSON_PATH, 'r') as f:
-            results = json.load(f)
+    title = unquote(title)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM tv_shows WHERE title = ?", (title,))
+    show_data = cursor.fetchone()
+
+    if show_data:
+        show_data = dict(show_data)
+        # Convert genres and networks back to list from JSON string
+        if show_data['genres']:
+            show_data['genres'] = json.loads(show_data['genres'])
+        if show_data['networks']:
+            show_data['networks'] = json.loads(show_data['networks'])
+
+        # Fetch seasons and episodes
+        cursor.execute("SELECT * FROM seasons WHERE tv_show_id = ?", (show_data['id'],))
+        seasons_raw = cursor.fetchall()
+        seasons_data = {}
+        for season_row in seasons_raw:
+            season_dict = dict(season_row)
+            cursor.execute("SELECT * FROM episodes WHERE season_id = ?", (season_dict['id'],))
+            episodes_raw = cursor.fetchall()
+            season_episodes = {}
+            for episode_row in episodes_raw:
+                episode_dict = dict(episode_row)
+                season_episodes[episode_dict['episode_number']] = episode_dict
+            season_dict['episodes'] = season_episodes
+            seasons_data[season_dict['season_number']] = season_dict
         
-        if title in results:
-            show_data = results[title]
-            # Fetch detailed season info for shows with missing episodes
-            if show_data.get('missing_by_season'):
-                tmdb_id = show_data.get('tmdb_id')
-                seasons_data = {}
-                for season_num in show_data['missing_by_season'].keys():
-                    seasons_data[season_num] = get_season_details(tmdb_id, season_num)
-                return render_template('show_details.html', title=title, show=show_data, seasons=seasons_data)
-            
-            return render_template('show_details.html', title=title, show=show_data)
+        # Calculate missing and future episodes for display
+        missing_episodes_count = 0
+        future_episodes_count = 0
+        for season_num, season_data in seasons_data.items():
+            for episode_num, episode_data in season_data['episodes'].items():
+                if not episode_data['exists_in_plex']:
+                    air_date_obj = None
+                    if episode_data['air_date']:
+                        try:
+                            air_date_obj = datetime.strptime(episode_data['air_date'], '%Y-%m-%d')
+                        except ValueError:
+                            pass
+
+                    if air_date_obj and air_date_obj < datetime.now():
+                        missing_episodes_count += 1
+                    elif air_date_obj and air_date_obj >= datetime.now():
+                        future_episodes_count += 1
+
+        conn.close()
+        return render_template('show_details.html', 
+                               title=title, 
+                               show=show_data, 
+                               seasons=seasons_data,
+                               missing_episodes_count=missing_episodes_count,
+                               future_episodes_count=future_episodes_count,
+                               now=datetime.now())
     
+    conn.close()
     return redirect(url_for('index'))
+
+@app.route('/settings', methods=['GET'])
+def settings():
+    with open(CONFIG_PATH, 'r') as f:
+        config = json.load(f)
+    return render_template('settings.html', config=config)
+
+@app.route('/settings', methods=['POST'])
+def save_settings():
+    with open(CONFIG_PATH, 'r') as f:
+        config = json.load(f)
+    
+    config['plex']['url'] = request.form['plex_url']
+    config['plex']['token'] = request.form['plex_token']
+    config['plex']['library_section'] = request.form['plex_library_id']
+    config['plex']['movie_library_section'] = request.form['plex_movie_library_id']
+    config['tmdb']['api_key'] = request.form['tmdb_api_key']
+    
+    with open(CONFIG_PATH, 'w') as f:
+        json.dump(config, f, indent=2)
+    
+    # Reload CONFIG after saving
+    global CONFIG
+    with open(CONFIG_PATH, 'r') as config_file:
+        CONFIG = json.load(config_file)
+        
+    return redirect(url_for('settings'))
+
+
+@app.route('/ignore/<path:title>')
+def ignore(title):
+    with open(os.path.join(os.path.dirname(__file__), 'ignore.json'), 'r+') as f:
+        ignored = json.load(f)
+        if title not in ignored:
+            ignored.append(title)
+            f.seek(0)
+            json.dump(ignored, f)
+            f.truncate()
+    return redirect(url_for('index'))
+
+@app.route('/unignore/<path:title>')
+def unignore(title):
+    with open(os.path.join(os.path.dirname(__file__), 'ignore.json'), 'r+') as f:
+        ignored = json.load(f)
+        if title in ignored:
+            ignored.remove(title)
+            f.seek(0)
+            json.dump(ignored, f)
+            f.truncate()
+    return redirect(url_for('index'))
+
+@app.route('/ignored')
+def ignored_shows():
+    if os.path.exists(os.path.join(os.path.dirname(__file__), 'ignore.json')):
+        with open(os.path.join(os.path.dirname(__file__), 'ignore.json'), 'r') as f:
+            ignored = json.load(f)
+    else:
+        ignored = []
+    return render_template('ignored.html', ignored=ignored)
+
 
 @app.route('/scan')
 def scan():
-    global SCAN_STATUS
+    global SCAN_STATUS, MOVIE_SCAN_STATUS
     
-    if SCAN_STATUS['in_progress']:
+    if SCAN_STATUS['in_progress'] or MOVIE_SCAN_STATUS['in_progress']:
         return jsonify(success=False, error='Scan already in progress')
     
     # Start scan in background thread
@@ -491,6 +730,7 @@ def scan_status():
         elapsed_seconds = (datetime.now() - SCAN_STATUS['start_time']).total_seconds()
         elapsed_time = f"{int(elapsed_seconds // 60)}m {int(elapsed_seconds % 60)}s"
     
+    app.logger.debug(f"Returning scan status: {SCAN_STATUS}")
     return jsonify({
         'in_progress': SCAN_STATUS['in_progress'],
         'progress': round(SCAN_STATUS['progress'], 1),
@@ -512,152 +752,7 @@ def stop_scan():
     SCAN_STATUS['stop_requested'] = True
     return jsonify(success=True, message='Scan stop requested. Finishing current show and saving results...')
 
-@app.route('/fix-match', methods=['POST'])
-def fix_match():
-    title = request.form['title']
-    new_tmdb_id = request.form['tmdb_id']
-    
-    try:
-        plex = PlexServer(CONFIG['plex']['url'], CONFIG['plex']['token'])
-        show = next((s for s in plex.library.section(CONFIG['plex']['library_section']).all() if s.title == title), None)
-        if not show:
-            return jsonify(success=False, error='Show not found')
 
-        # Get new metadata
-        existing, existing_episode_details = get_existing_episodes(show)
-        all_eps = fetch_tmdb_episodes(new_tmdb_id)
-        
-        # Filter out future episodes when calculating missing episodes
-        aired_missing = []
-        future_episodes = []
-        
-        # Process missing episodes
-        for season_num, ep_num in sorted(list(all_eps - existing)):
-            # Get episode air date
-            air_date = None
-            has_aired = True
-            
-            # Check if we have season data to determine air date
-            season_details = get_season_details(new_tmdb_id, season_num)
-            if season_details and 'episodes' in season_details:
-                for ep in season_details.get('episodes', []):
-                    if ep.get('episode_number') == ep_num:
-                        air_date = ep.get('air_date')
-                        if air_date:
-                            try:
-                                air_date_obj = datetime.strptime(air_date, '%Y-%m-%d')
-                                # Set to start of day for today's date
-                                today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-                                # Consider episodes released today as upcoming (not aired yet)
-                                has_aired = air_date_obj < today_start
-                            except:
-                                has_aired = True
-                        break
-            
-            if has_aired:
-                aired_missing.append((season_num, ep_num))
-            else:
-                future_episodes.append((season_num, ep_num))
-        
-        missing = aired_missing
-        
-        # Organize missing episodes by season
-        missing_by_season = {}
-        for s, e in missing:
-            if s not in missing_by_season:
-                missing_by_season[s] = []
-            missing_by_season[s].append(e)
-            
-        series_status = get_series_status(new_tmdb_id)
-        poster_url = get_show_poster(new_tmdb_id)
-        details = get_show_details(new_tmdb_id)
-        
-        # Get all seasons from TMDb
-        all_seasons = set([s for s, _ in all_eps])
-        seasons_data = {}
-        
-        for season_num in all_seasons:
-            # Get detailed season info
-            season_details = get_season_details(new_tmdb_id, season_num)
-            
-            if season_details and 'episodes' in season_details:
-                # Create a dictionary of episodes
-                season_episodes = {}
-                
-                for ep in season_details.get('episodes', []):
-                    episode_num = ep.get('episode_number')
-                    
-                    # Check if episode has aired yet
-                    air_date = ep.get('air_date')
-                    has_aired = True
-                    if air_date:
-                        try:
-                            air_date_obj = datetime.strptime(air_date, '%Y-%m-%d')
-                            has_aired = air_date_obj <= datetime.now()
-                        except:
-                            has_aired = True  # Default to assuming it has aired if date parsing fails
-                    
-                    # Common episode data
-                    episode_data = {
-                        'title': ep.get('name', f'Episode {episode_num}'),
-                        'air_date': air_date,
-                        'overview': ep.get('overview'),
-                        'still_path': ep.get('still_path'),
-                        'episode_number': episode_num,
-                        'exists': (season_num, episode_num) in existing,
-                        'has_aired': has_aired
-                    }
-                    
-                    # Add details for existing episodes
-                    if episode_data['exists'] and season_num in existing_episode_details and episode_num in existing_episode_details[season_num]:
-                        episode_data.update(existing_episode_details[season_num][episode_num])
-                    
-                    # Add to our episodes dictionary
-                    season_episodes[episode_num] = episode_data
-                
-                seasons_data[season_num] = {
-                    'name': season_details.get('name', f'Season {season_num}'),
-                    'overview': season_details.get('overview'),
-                    'poster_path': season_details.get('poster_path'),
-                    'episodes': season_episodes,
-                }
-
-        # Update results file
-        if os.path.exists(JSON_PATH):
-            with open(JSON_PATH, 'r') as f:
-                results = json.load(f)
-        else:
-            results = {}
-
-        # Organize future episodes by season
-        future_by_season = {}
-        for s, e in future_episodes:
-            if s not in future_by_season:
-                future_by_season[s] = []
-            future_by_season[s].append(e)
-        
-        results[title] = {
-            'status': 'Complete' if not missing else 'Incomplete',
-            'series_status': series_status,
-            'missing_episodes': missing,
-            'missing_by_season': missing_by_season,
-            'future_episodes': future_episodes,
-            'future_by_season': future_by_season,
-            'tmdb_id': new_tmdb_id,
-            'poster_url': poster_url,
-            'details': details,
-            'seasons': seasons_data
-        }
-
-        # Update last scan time
-        results['_last_scan_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-        with open(JSON_PATH, 'w') as f:
-            json.dump(results, f, indent=2)
-
-        return jsonify(success=True)
-    except Exception as e:
-        return jsonify(success=False, error=str(e))
 
 @app.route('/get-show-details', methods=['GET'])
 def get_show_details_api():
@@ -666,21 +761,154 @@ def get_show_details_api():
         return jsonify(success=False, error='No title provided')
     
     try:
-        # Load current results
-        if os.path.exists(JSON_PATH):
-            with open(JSON_PATH, 'r') as f:
-                results = json.load(f)
-            
-            if title in results:
-                return jsonify(success=True, data=results[title])
-            else:
-                return jsonify(success=False, error='Show not found')
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM tv_shows WHERE title = ?", (title,))
+        show_data = cursor.fetchone()
+
+        if show_data:
+            show_data = dict(show_data)
+            if show_data['genres']:
+                show_data['genres'] = json.loads(show_data['genres'])
+            if show_data['networks']:
+                show_data['networks'] = json.loads(show_data['networks'])
+
+            # Fetch seasons and episodes
+            cursor.execute("SELECT * FROM seasons WHERE tv_show_id = ?", (show_data['id'],))
+            seasons_raw = cursor.fetchall()
+            seasons_data = {}
+            for season_row in seasons_raw:
+                season_dict = dict(season_row)
+                cursor.execute("SELECT * FROM episodes WHERE season_id = ?", (season_dict['id'],))
+                episodes_raw = cursor.fetchall()
+                season_episodes = {}
+                for episode_row in episodes_raw:
+                    episode_dict = dict(episode_row)
+                    season_episodes[episode_dict['episode_number']] = episode_dict
+                season_dict['episodes'] = season_episodes
+                seasons_data[season_dict['season_number']] = season_dict
+            show_data['seasons'] = seasons_data
+
+            conn.close()
+            return jsonify(success=True, data=show_data)
         else:
-            return jsonify(success=False, error='No scan results available')
+            conn.close()
+            return jsonify(success=False, error='Show not found')
     except Exception as e:
         return jsonify(success=False, error=str(e))
 
+@app.route('/movies')
+def movies():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM movies")
+    movies_data = cursor.fetchall()
+    conn.close()
+
+    movies_list = []
+    for movie in movies_data:
+        movies_list.append(dict(movie))
+
+    return render_template('movies.html', movies=movies_list)
+
+@app.route('/scan_movies')
+def scan_movies():
+    global SCAN_STATUS, MOVIE_SCAN_STATUS
+
+    if SCAN_STATUS['in_progress'] or MOVIE_SCAN_STATUS['in_progress']:
+        return jsonify(success=False, error='Scan already in progress')
+
+    thread = threading.Thread(target=run_movie_scan_thread)
+    thread.daemon = True
+    thread.start()
+
+    return jsonify(success=True)
+
+@app.route('/movie_scan_status')
+def movie_scan_status():
+    global MOVIE_SCAN_STATUS
+
+    elapsed_time = None
+    if MOVIE_SCAN_STATUS['start_time']:
+        elapsed_seconds = (datetime.now() - MOVIE_SCAN_STATUS['start_time']).total_seconds()
+        elapsed_time = f"{int(elapsed_seconds // 60)}m {int(elapsed_seconds % 60)}s"
+
+    app.logger.debug(f"Returning movie scan status: {MOVIE_SCAN_STATUS}")
+    return jsonify({
+        'in_progress': MOVIE_SCAN_STATUS['in_progress'],
+        'progress': round(MOVIE_SCAN_STATUS['progress'], 1),
+        'current_collection': MOVIE_SCAN_STATUS['current_collection'],
+        'processed_collections': MOVIE_SCAN_STATUS['processed_collections'],
+        'total_collections': MOVIE_SCAN_STATUS['total_collections'],
+        'status_message': MOVIE_SCAN_STATUS['status_message'],
+        'elapsed_time': elapsed_time,
+        'stop_requested': MOVIE_SCAN_STATUS['stop_requested']
+    })
+
+@app.route('/stop_movie_scan')
+def stop_movie_scan():
+    global MOVIE_SCAN_STATUS
+
+    if not MOVIE_SCAN_STATUS['in_progress']:
+        return jsonify(success=False, error='No movie scan is currently in progress')
+
+    MOVIE_SCAN_STATUS['stop_requested'] = True
+    return jsonify(success=True, message='Movie scan stop requested.')
+
+def run_movie_scan_thread():
+    global MOVIE_SCAN_STATUS
+
+    try:
+        MOVIE_SCAN_STATUS['in_progress'] = True
+        MOVIE_SCAN_STATUS['progress'] = 0
+        MOVIE_SCAN_STATUS['status_message'] = 'Connecting to Plex server...'
+        MOVIE_SCAN_STATUS['start_time'] = datetime.now()
+        MOVIE_SCAN_STATUS['stop_requested'] = False
+
+        plex = PlexServer(CONFIG['plex']['url'], CONFIG['plex']['token'])
+        movies = plex.library.section(CONFIG['plex']['movie_library_section']).all()
+
+        MOVIE_SCAN_STATUS['total_collections'] = len(movies) # Treat each movie as a collection for progress
+        MOVIE_SCAN_STATUS['processed_collections'] = 0
+
+        for movie in movies:
+            if MOVIE_SCAN_STATUS['stop_requested']:
+                MOVIE_SCAN_STATUS['status_message'] = 'Movie scan stopped by user.'
+                break
+
+            MOVIE_SCAN_STATUS['current_collection'] = movie.title
+            MOVIE_SCAN_STATUS['status_message'] = f'Processing {movie.title}...'
+
+            tmdb_id = get_movie_tmdb_id(movie)
+            movie_details = None
+            if tmdb_id:
+                movie_details = get_movie_details(tmdb_id)
+            
+            if movie_details:
+                insert_movie(
+                    movie.title,
+                    tmdb_id,
+                    movie_details.get('poster_path'),
+                    movie_details.get('overview'),
+                    movie_details.get('release_date'),
+                    movie_details.get('studio')
+                )
+
+            MOVIE_SCAN_STATUS['processed_collections'] += 1
+            MOVIE_SCAN_STATUS['progress'] = (MOVIE_SCAN_STATUS['processed_collections'] / MOVIE_SCAN_STATUS['total_collections']) * 100
+            time.sleep(random.uniform(0.1, 0.3))
+
+        if not MOVIE_SCAN_STATUS['stop_requested']:
+            MOVIE_SCAN_STATUS['status_message'] = 'Movie scan complete.'
+            MOVIE_SCAN_STATUS['progress'] = 100
+
+    except Exception as e:
+        MOVIE_SCAN_STATUS['status_message'] = f'Error: {str(e)}'
+    finally:
+        MOVIE_SCAN_STATUS['in_progress'] = False
+        MOVIE_SCAN_STATUS['stop_requested'] = False
+
 if __name__ == '__main__':
-    app.run(debug=CONFIG['app']['debug'], 
-            host=CONFIG['app']['host'], 
+    app.run(debug=CONFIG['app']['debug'],
+            host=CONFIG['app']['host'],
             port=CONFIG['app']['port'])

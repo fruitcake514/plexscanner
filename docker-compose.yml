@@ -1,20 +1,10 @@
 services:
   plextmdb:
-    build:
-      context: https://github.com/fruitcake514/plexscanner.git
+    build: .
     container_name: plextmdb
-    environment:
-      - PLEX_URL=http://xxx.xxx.xxx.xxx:32400
-      - PLEX_TOKEN=xxxxxxxxx
-      - PLEX_LIBRARY=TV Shows
-      - TMDB_API_KEY=xxxxxxxxxx
-      - APP_PORT=5555
-      - APP_DEBUG=true
-      - APP_HOST=0.0.0.0
-      - APP_SCAN_RESULTS_PATH=scan_results.json
     ports:
-      - '5555:5555'
+      - '5000:5000'
     restart: unless-stopped
+    network_mode: host
     volumes:
-      - /mnt/pool1/appdata/plextmdb/data:/app/data
-      - /mnt/pool1/appdata/plextmdb/scan_results.json:/app/scan_results.json
+      - ./config.json:/app/config.json
