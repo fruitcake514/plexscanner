@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+
+{% block title %}Movie Collections - Plex TMDb Scanner{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold text-white"><i class="bi bi-film mr-2"></i> Plex Movie Collections</h1>
+        <button class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center" id="run-movie-scan">
+            <span class="scan-text"><i class="bi bi-arrow-clockwise mr-2"></i> Scan Movie Library</span>
+            <span class="scan-progress hidden">
+                <span class="spinner-border spinner-border-sm mr-2" role="status" aria-hidden="true"></span>
+                <span>Scanning...</span>
+            </span>
+        </button>
+    </div>
+
+    <!-- Progress bar and scan information -->
+    <div class="progress-container hidden mb-6" id="movieProgressContainer">
+        <div class="flex justify-between mb-1">
+            <div class="scan-info text-sm font-medium text-gray-400" id="movieScanStatus">Starting scan...</div>
+            <div class="scan-info text-sm font-medium text-gray-400" id="movieScanProgress">0%</div>
+        </div>
+        <div class="w-full bg-gray-700 rounded-full h-2.5 mb-2">
+            <div class="bg-blue-600 h-2.5 rounded-full" id="movieScanProgressBar" style="width: 0%" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+        </div>
+        <div class="text-center">
+            <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded-lg text-sm" id="stopMovieScanBtn">
+                <i class="bi bi-stop-fill mr-1"></i> Stop Scan
+            </button>
+            <small class="text-gray-500 ml-2">Progress so far will be saved</small>
+        </div>
+    </div>
+
+    {% if movies %}
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+        {% for movie in movies %}
+            <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden cursor-pointer transform transition duration-200 hover:scale-105 hover:shadow-xl"
+                 data-modal-target="#movie-modal-{{ movie.id }}">
+                <img src="{{ movie.poster_url }}" class="w-full h-auto object-cover" alt="{{ movie.title }} poster" onerror="this.onerror=null;this.src='https://via.placeholder.com/500x750.png?text=No+Poster';">
+                <div class="p-4">
+                    <h5 class="font-bold text-lg text-white text-center">{{ movie.title }}</h5>
+                </div>
+            </div>
+
+            <!-- Modal Structure -->
+            <div id="movie-modal-{{ movie.id }}" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden">
+                <div class="bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto relative">
+                    <button class="absolute top-4 right-4 text-gray-400 hover:text-white text-2xl close-modal-btn"><i class="bi bi-x-lg"></i></button>
+                    <div class="p-6">
+                        <h5 class="text-2xl font-bold text-white mb-4">{{ movie.title }} ({{ movie.release_date.split('-')[0] if movie.release_date else 'N/A' }})</h5>
+                        {% if movie.overview %}
+                        <p class="text-gray-300 mb-6">{{ movie.overview }}</p>
+                        {% endif %}
+                        <p class="text-gray-400 text-sm">Release Date: {{ movie.release_date }}</p>
+                        {% if movie.studio %}
+                        <p class="text-gray-400 text-sm">Studio: {{ movie.studio }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+        </div>
+    {% else %}
+        <div class="bg-gray-800 p-6 rounded-lg shadow-lg text-center">
+            <p class="text-gray-400 text-lg">No movies scanned yet. Click "Scan Movie Library" to begin.</p>
+        </div>
+    {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let movieScanInProgress = false;
+    let movieStatusCheckInterval;
+
+    function updateMovieScanUI(isScanning) {
+        const scanBtn = document.getElementById('run-movie-scan');
+        const scanText = scanBtn.querySelector('.scan-text');
+        const scanProgress = scanBtn.querySelector('.scan-progress');
+        const progressContainer = document.getElementById('movieProgressContainer');
+
+        if (isScanning) {
+            scanBtn.disabled = true;
+            scanText.classList.add('hidden');
+            scanProgress.classList.remove('hidden');
+            scanBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            progressContainer.classList.remove('hidden');
+        } else {
+            scanBtn.disabled = false;
+            scanText.classList.remove('hidden');
+            scanProgress.classList.add('hidden');
+            scanBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            progressContainer.classList.add('hidden');
+        }
+    }
+
+    function checkMovieScanStatus() {
+        if (!movieScanInProgress) return;
+
+        fetch('/movie_scan_status')
+            .then(res => res.json())
+            .then(data => {
+                const progressBar = document.getElementById('movieScanProgressBar');
+                const scanStatus = document.getElementById('movieScanStatus');
+                const scanProgressText = document.getElementById('movieScanProgress');
+                const stopScanBtn = document.getElementById('stopMovieScanBtn');
+
+                progressBar.style.width = data.progress + '%';
+                scanProgressText.textContent = Math.round(data.progress) + '%';
+
+                let statusMsg = data.status_message;
+                if (data.in_progress && !data.stop_requested) {
+                    if (data.total_collections !== 'N/A') {
+                        statusMsg += ` (Collection ${data.processed_collections}/${data.total_collections})`;
+                    }
+                }
+                if (data.elapsed_time) {
+                    statusMsg += ` - Running for ${data.elapsed_time}`;
+                }
+                scanStatus.textContent = statusMsg;
+
+                if (data.stop_requested) {
+                    stopScanBtn.disabled = true;
+                    stopScanBtn.innerHTML = '<i class="bi bi-hourglass-split mr-1"></i> Stopping...';
+                }
+
+                if (!data.in_progress) {
+                    clearInterval(movieStatusCheckInterval);
+                    movieScanInProgress = false;
+                    if (data.stop_requested) {
+                        scanStatus.textContent = 'Movie scan stopped. Reloading...';
+                    } else if (data.progress >= 100) {
+                        scanStatus.textContent = 'Movie scan complete! Reloading...';
+                    } else {
+                        scanStatus.textContent = 'Movie scan finished. Reloading...';
+                    }
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 2000);
+                }
+            })
+            .catch(err => {
+                console.error('Movie status check error:', err);
+                clearInterval(movieStatusCheckInterval);
+                movieScanInProgress = false;
+                updateMovieScanUI(false);
+                alert("An error occurred while checking the scan status.");
+            });
+    }
+
+    function runMovieScan() {
+        if (movieScanInProgress) return;
+
+        fetch('/scan_movies')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    movieScanInProgress = true;
+                    updateMovieScanUI(true);
+                    movieStatusCheckInterval = setInterval(checkMovieScanStatus, 1000);
+                } else {
+                    alert(data.error || 'Movie scan failed to start.');
+                }
+            })
+            .catch(err => {
+                console.error('Fetch error:', err);
+                alert('Failed to run movie scan.');
+            });
+    }
+
+    function stopMovieScan() {
+        if (!movieScanInProgress) return;
+
+        if (!confirm('Are you sure you want to stop the movie scan? Progress so far will be saved.')) {
+            return;
+        }
+
+        fetch('/stop_movie_scan')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const scanStatus = document.getElementById('movieScanStatus');
+                    scanStatus.textContent = 'Stopping movie scan... Saving results...';
+                    document.getElementById('stopMovieScanBtn').disabled = true;
+                } else {
+                    alert(data.error || 'Failed to stop movie scan.');
+                }
+            })
+            .catch(err => {
+                console.error('Fetch error:', err);
+                alert('Failed to stop movie scan.');
+            });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('run-movie-scan').addEventListener('click', runMovieScan);
+        document.getElementById('stopMovieScanBtn').addEventListener('click', stopMovieScan);
+        
+        // Check if a scan was in progress on page load
+        fetch('/movie_scan_status').then(res => res.json()).then(data => {
+            if (data.in_progress) {
+                movieScanInProgress = true;
+                updateMovieScanUI(true);
+                movieStatusCheckInterval = setInterval(checkMovieScanStatus, 1000);
+            }
+        });
+
+        // Modal functionality
+        document.querySelectorAll('[data-modal-target]').forEach(card => {
+            card.addEventListener('click', function() {
+                const modalId = this.dataset.modalTarget;
+                const modal = document.querySelector(modalId);
+                modal.classList.remove('hidden');
+                document.body.style.overflow = 'hidden'; // Prevent scrolling
+            });
+        });
+
+        document.querySelectorAll('.close-modal-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const modal = this.closest('.fixed');
+                modal.classList.add('hidden');
+                document.body.style.overflow = ''; // Restore scrolling
+            });
+        });
+
+        // Close modal if clicked outside content
+        document.querySelectorAll('.fixed.inset-0').forEach(modal => {
+            modal.addEventListener('click', function(event) {
+                if (event.target === modal) {
+                    modal.classList.add('hidden');
+                    document.body.style.overflow = '';
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Plex TMDb Scanner{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        'gray-900': '#1a202c',
+                        'gray-800': '#2d3748',
+                        'gray-700': '#4a5568',
+                        'gray-600': '#718096',
+                        'gray-500': '#a0aec0',
+                        'gray-400': '#cbd5e0',
+                        'gray-300': '#e2e8f0',
+                        'gray-200': '#edf2f7',
+                        'gray-100': '#f7fafc',
+                    }
+                }
+            }
+        }
+    </script>
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="bg-gray-900 text-gray-300 font-sans">
+    <nav class="bg-gray-800 shadow-lg mb-4">
+        <div class="container mx-auto px-4">
+            <div class="flex justify-between items-center py-4">
+                <a class="text-2xl font-bold text-white" href="{{ url_for('index') }}"><i class="bi bi-search mr-2"></i>Plex Scanner</a>
+                <div class="hidden md:flex items-center space-x-4">
+                    <a class="text-gray-300 hover:text-white" href="{{ url_for('index') }}"><i class="bi bi-tv mr-1"></i> TV Shows</a>
+                    <a class="text-gray-300 hover:text-white" href="{{ url_for('movies') }}"><i class="bi bi-film mr-1"></i> Movies</a>
+                    <a class="text-gray-300 hover:text-white" href="{{ url_for('settings') }}"><i class="bi bi-gear mr-1"></i> Settings</a>
+                    <a class="text-gray-300 hover:text-white" href="{{ url_for('ignored_shows') }}"><i class="bi bi-eye-slash mr-1"></i> Ignored</a>
+                </div>
+                <div class="md:hidden">
+                    <button id="mobile-menu-button" class="text-gray-300 hover:text-white focus:outline-none">
+                        <i class="bi bi-list text-2xl"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div id="mobile-menu" class="md:hidden hidden bg-gray-800">
+            <a class="block py-2 px-4 text-sm text-gray-300 hover:bg-gray-700" href="{{ url_for('index') }}">TV Shows</a>
+            <a class="block py-2 px-4 text-sm text-gray-300 hover:bg-gray-700" href="{{ url_for('movies') }}">Movies</a>
+            <a class="block py-2 px-4 text-sm text-gray-300 hover:bg-gray-700" href="{{ url_for('settings') }}">Settings</a>
+            <a class="block py-2 px-4 text-sm text-gray-300 hover:bg-gray-700" href="{{ url_for('ignored_shows') }}">Ignored</a>
+        </div>
+    </nav>
+
+    <main class="container mx-auto px-4">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="bg-gray-800 text-white text-center p-4 mt-8">
+        <p>&copy; 2023 Plex TMDb Scanner</p>
+    </footer>
+
+    <script>
+        document.getElementById('mobile-menu-button').addEventListener('click', function() {
+            document.getElementById('mobile-menu').classList.toggle('hidden');
+        });
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
