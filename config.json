@@ -1,12 +1,12 @@
 {
   "plex": {
-    "url": "http://192.168.1.5:32400",
-    "token": "9bzRhV2jtPTeF3Lwr-zg",
+    "url": "xxxxx",
+    "token": "xxxx",
     "library_section": "TV Shows",
     "movie_library_section": "Movies"
   },
   "tmdb": {
-    "api_key": "a2c079689712769699d8d20249314e73"
+    "api_key": "xxxx"
   },
 
   "app": {
