@@ -128,10 +128,7 @@
                                                 <p class="text-xs text-gray-400">{{ episode.air_date }}</p>
                                             </div>
                                             <div class="text-xs font-semibold">
-                                                {% if is_missing %}
-                                                    <button class="download-btn bg-blue-600 hover:bg-blue-700 text-white font-bold py-1 px-2 rounded-lg text-xs" data-title="{{ title }}" data-season="{{ season_num }}" data-episode="{{ episode_num }}">
-                                                        <i class="bi bi-download mr-1"></i> Download
-                                                    </button>
+                                                {% if is_missing %}<span class="text-red-400">Missing</span>
                                                 {% elif is_owned %}<span class="text-green-400">Owned</span>
                                                 {% elif is_future %}<span class="text-blue-400">Upcoming</span>
                                                 {% endif %}
@@ -160,46 +157,25 @@
 
 {% block scripts %}
 <script>
-    function downloadEpisode(button) {
-        const title = button.dataset.title;
-        const season = button.dataset.season;
-        const episode = button.dataset.episode;
-
-        button.disabled = true;
-        button.innerHTML = '<i class="bi bi-arrow-clockwise mr-1"></i> Searching...';
-
-        fetch('/search_episode', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ title, season, episode })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                button.innerHTML = '<i class="bi bi-check-circle mr-1"></i> Sent!';
-                alert(data.message);
+document.addEventListener('DOMContentLoaded', function() {
+    // Season toggle functionality
+    const seasonHeaders = document.querySelectorAll('.season-header');
+    seasonHeaders.forEach(header => {
+        header.addEventListener('click', function() {
+            const episodes = this.nextElementSibling;
+            const icon = this.querySelector('.season-toggle-icon i');
+            
+            if (episodes.classList.contains('hidden')) {
+                episodes.classList.remove('hidden');
+                icon.classList.remove('bi-chevron-right');
+                icon.classList.add('bi-chevron-down');
             } else {
-                button.innerHTML = '<i class="bi bi-x-circle mr-1"></i> Failed';
-                alert(`Error: ${data.error}`);
-                button.disabled = false;
+                episodes.classList.add('hidden');
+                icon.classList.remove('bi-chevron-down');
+                icon.classList.add('bi-chevron-right');
             }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            button.innerHTML = '<i class="bi bi-x-circle mr-1"></i> Failed';
-            alert('An unexpected error occurred. Check the console for details.');
-            button.disabled = false;
-        });
-    }
-
-    document.addEventListener('DOMContentLoaded', function() {
-        document.querySelectorAll('.download-btn').forEach(button => {
-            button.addEventListener('click', function() {
-                downloadEpisode(this);
-            });
         });
     });
+});
 </script>
 {% endblock %}
