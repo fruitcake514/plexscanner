@@ -366,7 +366,37 @@ def run_scan_thread():
         app.logger.debug("Connected to Plex server.")
         
         SCAN_STATUS['status_message'] = 'Fetching TV Shows...'
-        shows = plex.library.section(CONFIG['plex']['library_section']).all()
+        plex_shows = plex.library.section(CONFIG['plex']['library_section']).all()
+        plex_show_titles = {s.title for s in plex_shows}
+
+        # Get all show titles from the database
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT title FROM tv_shows")
+        db_show_titles = {row['title'] for row in cursor.fetchall()}
+        conn.close()
+
+        # Find and delete shows no longer in Plex
+        shows_to_delete = db_show_titles - plex_show_titles
+        if shows_to_delete:
+            app.logger.debug(f"Deleting {len(shows_to_delete)} shows no longer in Plex: {shows_to_delete}")
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            for title in shows_to_delete:
+                cursor.execute("SELECT id FROM tv_shows WHERE title = ?", (title,))
+                show_id_row = cursor.fetchone()
+                if show_id_row:
+                    show_id = show_id_row['id']
+                    # Delete episodes
+                    cursor.execute("DELETE FROM episodes WHERE season_id IN (SELECT id FROM seasons WHERE tv_show_id = ?)", (show_id,))
+                    # Delete seasons
+                    cursor.execute("DELETE FROM seasons WHERE tv_show_id = ?", (show_id,))
+                    # Delete show
+                    cursor.execute("DELETE FROM tv_shows WHERE id = ?", (show_id,))
+            conn.commit()
+            conn.close()
+
+        shows = plex_shows
         app.logger.debug(f"Fetched {len(shows)} TV shows from Plex.")
         
         # Load ignored shows
@@ -866,7 +896,28 @@ def run_movie_scan_thread():
         MOVIE_SCAN_STATUS['stop_requested'] = False
 
         plex = PlexServer(CONFIG['plex']['url'], CONFIG['plex']['token'])
-        movies = plex.library.section(CONFIG['plex']['movie_library_section']).all()
+        plex_movies = plex.library.section(CONFIG['plex']['movie_library_section']).all()
+        plex_movie_titles = {m.title for m in plex_movies}
+
+        # Get all movie titles from the database
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT title FROM movies")
+        db_movie_titles = {row['title'] for row in cursor.fetchall()}
+        conn.close()
+
+        # Find and delete movies no longer in Plex
+        movies_to_delete = db_movie_titles - plex_movie_titles
+        if movies_to_delete:
+            app.logger.debug(f"Deleting {len(movies_to_delete)} movies no longer in Plex: {movies_to_delete}")
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            for title in movies_to_delete:
+                cursor.execute("DELETE FROM movies WHERE title = ?", (title,))
+            conn.commit()
+            conn.close()
+
+        movies = plex_movies
 
         MOVIE_SCAN_STATUS['total_collections'] = len(movies) # Treat each movie as a collection for progress
         MOVIE_SCAN_STATUS['processed_collections'] = 0
