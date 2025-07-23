@@ -14,7 +14,7 @@
   },
   "qbittorrent": {
     "host": "xxx",
-    "port": xxx,
+    "port": "xxx",
     "username": "xxx",
     "password": "xxx",
     "category_mappings": {
