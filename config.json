@@ -1,14 +1,27 @@
 {
   "plex": {
-    "url": "xxxxx",
-    "token": "xxxx",
+    "url": "xxx",
+    "token": "xxx",
     "library_section": "TV Shows",
     "movie_library_section": "Movies"
   },
   "tmdb": {
-    "api_key": "xxxx"
+    "api_key": "xxx"
   },
-
+  "prowlarr": {
+    "url": "xxx",
+    "api_key": "xxx"
+  },
+  "qbittorrent": {
+    "host": "xxx",
+    "port": xxx,
+    "username": "xxx",
+    "password": "xxx",
+    "category_mappings": {
+      "movies": "movies",
+      "tv": "tv"
+    }
+  },
   "app": {
     "debug": true,
     "host": "0.0.0.0",
