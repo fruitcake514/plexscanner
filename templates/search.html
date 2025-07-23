@@ -59,12 +59,12 @@
                         <td class="py-2 px-4 text-white">${result.resolution}</td>
                         <td class="py-2 px-4 text-white">${result.codec}</td>
                         <td class="py-2 px-4 text-white">${result.owned ? 'Yes' : 'No'}</td>
-                        <td class="py-2 px-4 text-white">${result.magnetUrl ? `<button class="bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-2 rounded" data-magnet="${result.magnetUrl}" data-result-index="${index}">Download</button>` : ''}</td>
+                        <td class="py-2 px-4 text-white">${(result.magnetUrl || result.downloadUrl || result.link || result.guid) ? `<button class="bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-2 rounded" data-magnet="${result.magnetUrl || result.downloadUrl || result.link || result.guid}" data-result-index="${index}">Download</button>` : ''}</td>
                     `;
                     resultsContainer.appendChild(resultRow);
                     
                     // Store the result data for later use
-                    if (result.magnetUrl) {
+                    if (result.magnetUrl || result.downloadUrl || result.link || result.guid) {
                         window.searchResults = window.searchResults || [];
                         window.searchResults[index] = result;
                     }
