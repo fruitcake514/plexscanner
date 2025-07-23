@@ -41,6 +41,63 @@
                 </div>
             </div>
 
+            <div class="mb-5">
+                <h2 class="text-xl font-semibold text-white mb-4 border-b border-gray-700 pb-2">Prowlarr Settings</h2>
+                <div class="mb-4">
+                    <label for="prowlarr_url" class="block text-gray-300 text-sm font-bold mb-2">Prowlarr URL:</label>
+                    <input type="text" id="prowlarr_url" name="prowlarr_url" value="{{ config.prowlarr.url }}"
+                           class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
+                </div>
+                <div class="mb-4">
+                    <label for="prowlarr_api_key" class="block text-gray-300 text-sm font-bold mb-2">Prowlarr API Key:</label>
+                    <input type="text" id="prowlarr_api_key" name="prowlarr_api_key" value="{{ config.prowlarr.api_key }}"
+                           class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
+                </div>
+            </div>
+
+            <div class="mb-5">
+                <h2 class="text-xl font-semibold text-white mb-4 border-b border-gray-700 pb-2">qBittorrent Settings</h2>
+                <div class="mb-4">
+                    <label for="qbittorrent_host" class="block text-gray-300 text-sm font-bold mb-2">qBittorrent Host:</label>
+                    <input type="text" id="qbittorrent_host" name="qbittorrent_host" value="{{ config.qbittorrent.host }}"
+                           class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
+                </div>
+                <div class="mb-4">
+                    <label for="qbittorrent_port" class="block text-gray-300 text-sm font-bold mb-2">qBittorrent Port:</label>
+                    <input type="number" id="qbittorrent_port" name="qbittorrent_port" value="{{ config.qbittorrent.port }}"
+                           class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
+                </div>
+                <div class="mb-4">
+                    <label for="qbittorrent_username" class="block text-gray-300 text-sm font-bold mb-2">qBittorrent Username:</label>
+                    <input type="text" id="qbittorrent_username" name="qbittorrent_username" value="{{ config.qbittorrent.username }}"
+                           class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
+                </div>
+                <div class="mb-4">
+                    <label for="qbittorrent_password" class="block text-gray-300 text-sm font-bold mb-2">qBittorrent Password:</label>
+                    <input type="password" id="qbittorrent_password" name="qbittorrent_password" value="{{ config.qbittorrent.password }}"
+                           class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
+                </div>
+                <div class="mt-4 p-4 bg-gray-700 rounded">
+                    <h3 class="text-lg font-semibold text-white mb-3">Category Mappings</h3>
+                    <p class="text-gray-400 text-sm mb-4">Map Prowlarr categories to qBittorrent categories (TV → tv, Movies → movies, other → prowlarr)</p>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-300 text-sm font-bold mb-2">Movies Category:</label>
+                            <input type="text" name="category_mapping_movies" value="{{ config.qbittorrent.category_mappings.movies if config.qbittorrent.category_mappings else 'movies' }}"
+                                   class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500"
+                                   placeholder="movies">
+                        </div>
+                        <div>
+                            <label class="block text-gray-300 text-sm font-bold mb-2">TV Category:</label>
+                            <input type="text" name="category_mapping_tv" value="{{ config.qbittorrent.category_mappings.tv if config.qbittorrent.category_mappings else 'tv' }}"
+                                   class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500"
+                                   placeholder="tv">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="flex items-center justify-between">
                 <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline">
                     Save Settings

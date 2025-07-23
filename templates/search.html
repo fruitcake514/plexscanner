@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Search - Plex TMDb Scanner{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold text-white mb-6"><i class="bi bi-search mr-2"></i> Search</h1>
+
+    <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+        <form id="search-form">
+            <div class="flex">
+                <input type="text" id="search-query" name="query" class="shadow appearance-none border border-gray-700 rounded-l w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500" placeholder="Search for a show or movie...">
+                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-r focus:outline-none focus:shadow-outline">
+                    Search
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <div id="search-results" class="mt-8">
+        <table class="min-w-full bg-gray-800 rounded-lg shadow-lg">
+            <thead>
+                <tr class="border-b border-gray-700">
+                    <th class="py-2 px-4 text-left text-white">Title</th>
+                    <th class="py-2 px-4 text-left text-white">Seeders</th>
+                    <th class="py-2 px-4 text-left text-white">Size (GB)</th>
+                    <th class="py-2 px-4 text-left text-white">Resolution</th>
+                    <th class="py-2 px-4 text-left text-white">Codec</th>
+                    <th class="py-2 px-4 text-left text-white">Owned</th>
+                    <th class="py-2 px-4 text-left text-white"></th>
+                </tr>
+            </thead>
+            <tbody id="results-body">
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    document.getElementById('search-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const query = document.getElementById('search-query').value;
+        fetch(`/search_prowlarr?query=${query}`)
+            .then(response => response.json())
+            .then(data => {
+                const resultsContainer = document.getElementById('search-results');
+                resultsContainer.innerHTML = '';
+                if (data.error) {
+                    resultsContainer.innerHTML = `<p class="text-red-500">${data.error}</p>`;
+                    return;
+                }
+                data.forEach((result, index) => {
+                    const resultRow = document.createElement('tr');
+                    resultRow.className = 'border-b border-gray-700';
+                    resultRow.innerHTML = `
+                        <td class="py-2 px-4 text-white">${result.title}</td>
+                        <td class="py-2 px-4 text-white">${result.seeders}</td>
+                        <td class="py-2 px-4 text-white">${(result.size / 1073741824).toFixed(2)}</td>
+                        <td class="py-2 px-4 text-white">${result.resolution}</td>
+                        <td class="py-2 px-4 text-white">${result.codec}</td>
+                        <td class="py-2 px-4 text-white">${result.owned ? 'Yes' : 'No'}</td>
+                        <td class="py-2 px-4 text-white">${result.magnetUrl ? `<button class="bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-2 rounded" data-magnet="${result.magnetUrl}" data-result-index="${index}">Download</button>` : ''}</td>
+                    `;
+                    resultsContainer.appendChild(resultRow);
+                    
+                    // Store the result data for later use
+                    if (result.magnetUrl) {
+                        window.searchResults = window.searchResults || [];
+                        window.searchResults[index] = result;
+                    }
+                });
+            });
+    });
+
+    // Add event listener for download buttons
+    document.addEventListener('click', function(e) {
+        if (e.target.dataset.magnet) {
+            const magnetLink = e.target.dataset.magnet;
+            const resultIndex = parseInt(e.target.dataset.resultIndex);
+            const result = window.searchResults ? window.searchResults[resultIndex] : null;
+            const categories = result ? (result.categories || []) : [];
+            download(magnetLink, categories);
+        }
+    });
+
+    function download(magnetLink, categories = []) {
+        fetch('/download', { 
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+                magnet: magnetLink,
+                categories: categories 
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Download started!');
+            } else {
+                alert(`Error: ${data.error}`);
+            }
+        });
+    }
+</script>
+{% endblock %}
