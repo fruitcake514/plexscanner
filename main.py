@@ -12,6 +12,9 @@ from database import init_db, DATABASE_PATH
 import sqlite3
 import logging
 
+from qbittorrentapi import Client
+import re
+
 app = Flask(__name__, static_folder='static')
 
 # Configure logging
@@ -151,6 +154,40 @@ def get_movie_by_title(title):
     return movie
 
 # === UTILITIES ===
+def determine_content_tag(categories):
+    """Map Prowlarr categories to qBittorrent tags using category mappings"""
+    if not categories:
+        return None  # No tag if no categories
+    
+    # Get category mappings from config
+    mappings = CONFIG.get('qbittorrent', {}).get('category_mappings', {})
+    
+    # Check categories for TV or Movie indicators
+    for category in categories:
+        category_name = category.get('name', '').lower()
+        if 'tv' in category_name:
+            return mappings.get('tv', CONFIG.get('qbittorrent', {}).get('tv_tag', 'tv'))
+        elif 'movies' in category_name or 'movie' in category_name:
+            return mappings.get('movies', CONFIG.get('qbittorrent', {}).get('movie_tag', 'movies'))
+    
+    # If no clear indicators found, leave untagged
+    return None
+
+def determine_qb_category(categories):
+    """Determine qBittorrent category: 'tv', 'movies', or 'prowlarr' as fallback"""
+    if not categories:
+        return 'prowlarr'  # Fallback category
+    
+    # Check categories for TV or Movie indicators
+    for category in categories:
+        category_name = category.get('name', '').lower()
+        if 'tv' in category_name:
+            return 'tv'
+        elif 'movies' in category_name or 'movie' in category_name:
+            return 'movies'
+    
+    # If no clear match found, use fallback
+    return 'prowlarr'
 def get_tmdb_id(plex_show):
     title = plex_show.title
     guid = plex_show.guid or ''
@@ -693,6 +730,21 @@ def save_settings():
     config['plex']['library_section'] = request.form['plex_library_id']
     config['plex']['movie_library_section'] = request.form['plex_movie_library_id']
     config['tmdb']['api_key'] = request.form['tmdb_api_key']
+    config['prowlarr']['url'] = request.form['prowlarr_url']
+    config['prowlarr']['api_key'] = request.form['prowlarr_api_key']
+    config['qbittorrent']['host'] = request.form['qbittorrent_host']
+    config['qbittorrent']['port'] = int(request.form['qbittorrent_port'])
+    config['qbittorrent']['username'] = request.form['qbittorrent_username']
+    config['qbittorrent']['password'] = request.form['qbittorrent_password']
+    # Set default tags based on category mappings for backward compatibility
+    config['qbittorrent']['movie_tag'] = request.form.get('category_mapping_movies', 'movies')
+    config['qbittorrent']['tv_tag'] = request.form.get('category_mapping_tv', 'tv')
+    
+    # Category mappings
+    if 'category_mappings' not in config['qbittorrent']:
+        config['qbittorrent']['category_mappings'] = {}
+    config['qbittorrent']['category_mappings']['movies'] = request.form['category_mapping_movies']
+    config['qbittorrent']['category_mappings']['tv'] = request.form['category_mapping_tv']
     
     with open(CONFIG_PATH, 'w') as f:
         json.dump(config, f, indent=2)
@@ -958,6 +1010,260 @@ def run_movie_scan_thread():
     finally:
         MOVIE_SCAN_STATUS['in_progress'] = False
         MOVIE_SCAN_STATUS['stop_requested'] = False
+
+@app.route('/search')
+def search():
+    return render_template('search.html')
+
+@app.route('/search_prowlarr')
+def search_prowlarr():
+    query = request.args.get('query')
+    if not query:
+        return jsonify({'error': 'A search query is required'}), 400
+
+    headers = {
+        'X-Api-Key': CONFIG['prowlarr']['api_key']
+    }
+    params = {
+        'query': query,
+        'categories[]': [2000, 5000],
+        'type': 'search'
+    }
+    try:
+        response = requests.get(f"{CONFIG['prowlarr']['url']}/api/v1/search", params=params, headers=headers)
+        response.raise_for_status()
+        results = response.json()
+
+        # Sort by seeders (descending)
+        results.sort(key=lambda x: x.get('seeders', 0), reverse=True)
+
+        # Extract resolution and codec
+        for result in results:
+            title = result.get('title', '').lower()
+            if '2160p' in title or '4k' in title:
+                result['resolution'] = '4K'
+            elif '1080p' in title:
+                result['resolution'] = '1080p'
+            elif '720p' in title:
+                result['resolution'] = '720p'
+            else:
+                result['resolution'] = 'Unknown'
+
+            if 'h.265' in title or 'hevc' in title:
+                result['codec'] = 'H.265'
+            elif 'h.264' in title or 'avc' in title:
+                result['codec'] = 'H.264'
+            elif 'av1' in title:
+                result['codec'] = 'AV1'
+            else:
+                result['codec'] = 'Unknown'
+
+        # Check against database - extract show/movie name from torrent title
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        for result in results:
+            result['owned'] = False  # Default to not owned
+            torrent_title = result.get('title', '').lower()
+            
+            # Try to extract the actual show/movie name from torrent title
+            # Remove common patterns like resolution, codec, release group, year
+            import re
+            
+            # For movies: Extract title and year if present
+            movie_pattern = r'^(.+?)\s*\(?(\d{4})\)?'
+            movie_match = re.match(movie_pattern, torrent_title)
+            if movie_match:
+                clean_title = movie_match.group(1).strip()
+                year = movie_match.group(2)
+                
+                # Check if this movie exists in database
+                cursor.execute("SELECT * FROM movies WHERE LOWER(title) LIKE ? OR LOWER(title) LIKE ?", 
+                             (f"%{clean_title}%", f"%{clean_title.replace(' ', '%')}%"))
+                movie = cursor.fetchone()
+                if movie:
+                    result['owned'] = True
+                    continue
+            
+            # For TV shows: Try various patterns
+            # Remove common TV show patterns like SxxExx, season info, etc.
+            tv_patterns = [
+                r'^(.+?)\s+s\d+',  # ShowName S01
+                r'^(.+?)\s+season\s+\d+',  # ShowName Season 1
+                r'^(.+?)\s+\d{4}',  # ShowName 2024
+                r'^(.+?)\s+complete',  # ShowName Complete
+            ]
+            
+            for pattern in tv_patterns:
+                tv_match = re.match(pattern, torrent_title, re.IGNORECASE)
+                if tv_match:
+                    clean_title = tv_match.group(1).strip()
+                    cursor.execute("SELECT * FROM tv_shows WHERE LOWER(title) LIKE ? OR LOWER(title) LIKE ?", 
+                                 (f"%{clean_title}%", f"%{clean_title.replace(' ', '%')}%"))
+                    show = cursor.fetchone()
+                    if show:
+                        result['owned'] = True
+                        break
+            
+            # Fallback: Try exact match with full title
+            if not result['owned']:
+                cursor.execute("SELECT * FROM movies WHERE LOWER(title) = ?", (torrent_title,))
+                movie = cursor.fetchone()
+                if movie:
+                    result['owned'] = True
+                else:
+                    cursor.execute("SELECT * FROM tv_shows WHERE LOWER(title) = ?", (torrent_title,))
+                    show = cursor.fetchone()
+                    if show:
+                        result['owned'] = True
+                        
+        conn.close()
+        return jsonify(results)
+    except requests.exceptions.RequestException as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/downloads')
+def downloads():
+    return render_template('downloads.html')
+
+@app.route('/download', methods=['POST'])
+def download():
+    magnet_or_url = request.json.get('magnet')
+    categories = request.json.get('categories', [])
+    app.logger.debug(f"Received download request for: {magnet_or_url}")
+    app.logger.debug(f"Categories: {categories}")
+    
+    # Determine qBittorrent category based on Prowlarr categories
+    qb_category = determine_qb_category(categories)
+    app.logger.debug(f"Determined qBittorrent category: {qb_category}")
+    
+    if not magnet_or_url or magnet_or_url == 'undefined':
+        app.logger.error("Magnet link/URL is missing or invalid")
+        return jsonify({'error': 'Magnet link/URL is required'}), 400
+
+
+    try:
+        # Check if this is a Prowlarr proxy URL or a real magnet link
+        if magnet_or_url.startswith('magnet:'):
+            # It's already a real magnet link
+            magnet_link = magnet_or_url
+            app.logger.debug("Using direct magnet link")
+        elif 'prowlarr' in magnet_or_url.lower() or CONFIG['prowlarr']['url'] in magnet_or_url:
+            # It's a Prowlarr proxy URL, fetch the actual magnet link or torrent file
+            app.logger.debug("Fetching from Prowlarr proxy URL")
+            try:
+                response = requests.get(magnet_or_url, timeout=30, allow_redirects=False)
+                app.logger.debug(f"Prowlarr response status: {response.status_code}")
+                app.logger.debug(f"Prowlarr response headers: {dict(response.headers)}")
+                
+                # Check if we got redirected to a magnet link
+                if response.status_code in [301, 302, 303, 307, 308]:
+                    location = response.headers.get('Location', '')
+                    app.logger.debug(f"Redirect location: {location}")
+                    if location.startswith('magnet:'):
+                        magnet_link = location
+                        app.logger.debug(f"Found magnet link in redirect: {magnet_link}")
+                        # Now add the magnet link to qBittorrent
+                        qb = Client(host=CONFIG['qbittorrent']['host'], port=CONFIG['qbittorrent']['port'], username=CONFIG['qbittorrent']['username'], password=CONFIG['qbittorrent']['password'])
+                        qb.auth_log_in()
+                        result = qb.torrents_add(urls=magnet_link, category=qb_category)
+                        if result == 'Ok.':
+                            app.logger.debug(f"Successfully sent magnet to qBittorrent: {magnet_link}")
+                            return jsonify({'success': True})
+                        else:
+                            app.logger.error(f"Failed to add torrent. qBittorrent responded: {result}")
+                            return jsonify({'error': f"qBittorrent error: {result}"}), 500
+                
+                # If no redirect or not a magnet link, try to download as torrent file
+                response = requests.get(magnet_or_url, timeout=30, allow_redirects=True)
+                response.raise_for_status()
+                
+                # Check if final URL is a magnet link after following redirects
+                if response.url.startswith('magnet:'):
+                    magnet_link = response.url
+                    app.logger.debug(f"Got final magnet link: {magnet_link}")
+                    qb = Client(host=CONFIG['qbittorrent']['host'], port=CONFIG['qbittorrent']['port'], username=CONFIG['qbittorrent']['username'], password=CONFIG['qbittorrent']['password'])
+                    qb.auth_log_in()
+                    result = qb.torrents_add(urls=magnet_link, category=qb_category)
+                    if result == 'Ok.':
+                        app.logger.debug(f"Successfully sent magnet to qBittorrent: {magnet_link}")
+                        return jsonify({'success': True})
+                    else:
+                        app.logger.error(f"Failed to add torrent. qBittorrent responded: {result}")
+                        return jsonify({'error': f"qBittorrent error: {result}"}), 500
+                else:
+                    # Try to add as torrent file
+                    app.logger.debug("No magnet link found, trying to add as torrent file")
+                    qb = Client(host=CONFIG['qbittorrent']['host'], port=CONFIG['qbittorrent']['port'], username=CONFIG['qbittorrent']['username'], password=CONFIG['qbittorrent']['password'])
+                    qb.auth_log_in()
+                    result = qb.torrents_add(torrent_files=response.content, category=qb_category)
+                    if result == 'Ok.':
+                        app.logger.debug("Successfully sent torrent file to qBittorrent")
+                        return jsonify({'success': True})
+                    else:
+                        app.logger.error(f"Failed to add torrent file. qBittorrent responded: {result}")
+                        return jsonify({'error': f"qBittorrent error: {result}"}), 500
+                        
+            except Exception as e:
+                app.logger.error(f"Error fetching from Prowlarr URL: {e}")
+                return jsonify({'error': f"Failed to fetch from Prowlarr: {str(e)}"}), 500
+        else:
+            # Assume it's a direct URL to a torrent file
+            app.logger.debug("Treating as direct torrent file URL")
+            try:
+                response = requests.get(magnet_or_url, timeout=30)
+                response.raise_for_status()
+                qb = Client(host=CONFIG['qbittorrent']['host'], port=CONFIG['qbittorrent']['port'], username=CONFIG['qbittorrent']['username'], password=CONFIG['qbittorrent']['password'])
+                qb.auth_log_in()
+                result = qb.torrents_add(torrent_files=response.content, category=qb_category)
+                if result == 'Ok.':
+                    app.logger.debug("Successfully sent torrent file to qBittorrent")
+                    return jsonify({'success': True})
+                else:
+                    app.logger.error(f"Failed to add torrent file. qBittorrent responded: {result}")
+                    return jsonify({'error': f"qBittorrent error: {result}"}), 500
+            except Exception as e:
+                app.logger.error(f"Error downloading torrent file: {e}")
+                return jsonify({'error': f"Failed to download torrent: {str(e)}"}), 500
+
+        # If we got here with a direct magnet link, add it to qBittorrent
+        if 'magnet_link' in locals():
+            qb = Client(host=CONFIG['qbittorrent']['host'], port=CONFIG['qbittorrent']['port'], username=CONFIG['qbittorrent']['username'], password=CONFIG['qbittorrent']['password'])
+            qb.auth_log_in()
+            result = qb.torrents_add(urls=magnet_link, category=qb_category)
+            if result == 'Ok.':
+                app.logger.debug(f"Successfully sent magnet to qBittorrent: {magnet_link}")
+                return jsonify({'success': True})
+            else:
+                app.logger.error(f"Failed to add torrent. qBittorrent responded: {result}")
+                return jsonify({'error': f"qBittorrent error: {result}"}), 500
+            
+    except Exception as e:
+        app.logger.error(f"Unexpected error in download function: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/downloads_status')
+def downloads_status():
+    try:
+        qb = Client(host=CONFIG['qbittorrent']['host'], port=CONFIG['qbittorrent']['port'], username=CONFIG['qbittorrent']['username'], password=CONFIG['qbittorrent']['password'])
+        try:
+            qb.auth_log_in()
+        except Exception as e:
+            app.logger.error(f"qBittorrent login failed: {e}")
+            return jsonify({'error': 'qBittorrent login failed'}), 500
+        torrents = qb.torrents_info()
+        torrent_list = []
+        for torrent in torrents:
+            torrent_list.append({
+                'name': torrent.name,
+                'size': torrent.size,
+                'state': torrent.state,
+                'progress': torrent.progress,
+                'hash': torrent.hash
+            })
+        return jsonify(torrent_list)
+        return jsonify(torrents)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=CONFIG['app']['debug'],
