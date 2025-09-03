@@ -195,6 +195,25 @@ def get_all_collections():
     return collections
 
 # === UTILITIES ===
+def get_ignored_shows():
+    ignored_shows_path = os.path.join(os.path.dirname(__file__), 'ignore.json')
+    if not os.path.exists(ignored_shows_path):
+        return []
+    
+    try:
+        with open(ignored_shows_path, 'r') as f:
+            content = f.read()
+            if not content:
+                return []
+            return json.loads(content)
+    except json.JSONDecodeError:
+        return []
+
+def save_ignored_shows(ignored_list):
+    ignored_shows_path = os.path.join(os.path.dirname(__file__), 'ignore.json')
+    with open(ignored_shows_path, 'w') as f:
+        json.dump(ignored_list, f, indent=2)
+
 def get_api_url(source, endpoint):
     if source == 'tmdb':
         return f'https://api.themoviedb.org/3/{endpoint}?api_key={CONFIG["tmdb"]["api_key"]}'
@@ -460,12 +479,7 @@ def run_scan_thread():
         shows = plex_shows
         app.logger.debug(f"Fetched {len(shows)} TV shows from Plex.")
         
-        # Load ignored shows
-        ignored_shows_path = os.path.join(os.path.dirname(__file__), 'ignore.json')
-        ignored = []
-        if os.path.exists(ignored_shows_path):
-            with open(ignored_shows_path, 'r') as f:
-                ignored = json.load(f)
+        ignored = get_ignored_shows()
         
         # Filter out ignored shows
         shows = [s for s in shows if s.title not in ignored]
@@ -758,11 +772,7 @@ def index():
     incomplete_shows = 0
     unknown_shows = 0
     
-    ignored_shows_path = os.path.join(os.path.dirname(__file__), 'ignore.json')
-    ignored = []
-    if os.path.exists(ignored_shows_path):
-        with open(ignored_shows_path, 'r') as f:
-            ignored = json.load(f)
+    ignored = get_ignored_shows()
 
     for show in shows:
         if show['title'] in ignored:
@@ -875,42 +885,28 @@ def show_details(title):
 @app.route('/ignore/<title>')
 def ignore(title):
     title = unquote(title)
-    ignored_shows_path = os.path.join(os.path.dirname(__file__), 'ignore.json')
-    ignored = []
-    if os.path.exists(ignored_shows_path):
-        with open(ignored_shows_path, 'r') as f:
-            ignored = json.load(f)
+    ignored = get_ignored_shows()
     
     if title not in ignored:
         ignored.append(title)
-        with open(ignored_shows_path, 'w') as f:
-            json.dump(ignored, f)
+        save_ignored_shows(ignored)
             
     return jsonify({'success': True})
 
 @app.route('/unignore/<title>')
 def unignore(title):
     title = unquote(title)
-    ignored_shows_path = os.path.join(os.path.dirname(__file__), 'ignore.json')
-    ignored = []
-    if os.path.exists(ignored_shows_path):
-        with open(ignored_shows_path, 'r') as f:
-            ignored = json.load(f)
+    ignored = get_ignored_shows()
     
     if title in ignored:
         ignored.remove(title)
-        with open(ignored_shows_path, 'w') as f:
-            json.dump(ignored, f)
+        save_ignored_shows(ignored)
             
     return redirect(url_for('ignored_shows'))
 
 @app.route('/ignored')
 def ignored_shows():
-    ignored_shows_path = os.path.join(os.path.dirname(__file__), 'ignore.json')
-    ignored = []
-    if os.path.exists(ignored_shows_path):
-        with open(ignored_shows_path, 'r') as f:
-            ignored = json.load(f)
+    ignored = get_ignored_shows()
     return render_template('ignored.html', ignored=ignored)
 
 @app.route('/movies')
