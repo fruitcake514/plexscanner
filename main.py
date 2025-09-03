@@ -25,6 +25,7 @@ def datetime_strptime(value, format):
     return datetime.strptime(value, format)
 
 app.jinja_env.filters['strptime'] = datetime_strptime
+app.jinja_env.filters['tojson'] = json.dumps
 
 # Initialize the database
 init_db()
@@ -133,13 +134,13 @@ def get_episodes_by_season_id(season_id):
     conn.close()
     return episodes
 
-def insert_movie(title, tmdb_id, poster_url, overview, release_date, studio):
+def insert_movie(title, tmdb_id, poster_url, overview, release_date, studio, collection_tmdb_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT OR REPLACE INTO movies (title, tmdb_id, poster_url, overview, release_date, studio, last_updated)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (title, tmdb_id, poster_url, overview, release_date, studio, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+        INSERT OR REPLACE INTO movies (title, tmdb_id, poster_url, overview, release_date, studio, collection_tmdb_id, last_updated)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (title, tmdb_id, poster_url, overview, release_date, studio, collection_tmdb_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
     conn.commit()
     movie_id = cursor.lastrowid
     conn.close()
@@ -153,50 +154,62 @@ def get_movie_by_title(title):
     conn.close()
     return movie
 
+def insert_collection(name, tmdb_id, poster_url):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR IGNORE INTO collections (name, tmdb_id, poster_url) VALUES (?, ?, ?)", (name, tmdb_id, poster_url))
+    conn.commit()
+    collection_id = cursor.lastrowid
+    conn.close()
+    return collection_id
+
+def get_collection_by_tmdb_id(tmdb_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM collections WHERE tmdb_id = ?", (tmdb_id,))
+    collection = cursor.fetchone()
+    conn.close()
+    return collection
+
+def insert_missing_movie(collection_id, title, tmdb_id, poster_url, release_date):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR IGNORE INTO missing_movies (collection_id, title, tmdb_id, poster_url, release_date) VALUES (?, ?, ?, ?, ?)", (collection_id, title, tmdb_id, poster_url, release_date))
+    conn.commit()
+    conn.close()
+
+def get_missing_movies_by_collection_id(collection_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM missing_movies WHERE collection_id = ?", (collection_id,))
+    movies = cursor.fetchall()
+    conn.close()
+    return movies
+
+def get_all_collections():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM collections")
+    collections = cursor.fetchall()
+    conn.close()
+    return collections
+
 # === UTILITIES ===
-def determine_content_tag(categories):
-    """Map Prowlarr categories to qBittorrent tags using category mappings"""
-    if not categories:
-        return None  # No tag if no categories
-    
-    # Get category mappings from config
-    mappings = CONFIG.get('qbittorrent', {}).get('category_mappings', {})
-    
-    # Check categories for TV or Movie indicators
-    for category in categories:
-        category_name = category.get('name', '').lower()
-        if 'tv' in category_name:
-            return mappings.get('tv', CONFIG.get('qbittorrent', {}).get('tv_tag', 'tv'))
-        elif 'movies' in category_name or 'movie' in category_name:
-            return mappings.get('movies', CONFIG.get('qbittorrent', {}).get('movie_tag', 'movies'))
-    
-    # If no clear indicators found, leave untagged
+def get_api_url(source, endpoint):
+    if source == 'tmdb':
+        return f'https://api.themoviedb.org/3/{endpoint}?api_key={CONFIG["tmdb"]["api_key"]}'
     return None
 
-def determine_qb_category(categories):
-    """Determine qBittorrent category: 'tv', 'movies', or 'prowlarr' as fallback"""
-    if not categories:
-        return 'prowlarr'  # Fallback category
-    
-    # Check categories for TV or Movie indicators
-    for category in categories:
-        category_name = category.get('name', '').lower()
-        if 'tv' in category_name:
-            return 'tv'
-        elif 'movies' in category_name or 'movie' in category_name:
-            return 'movies'
-    
-    # If no clear match found, use fallback
-    return 'prowlarr'
 def get_tmdb_id(plex_show):
     title = plex_show.title
     guid = plex_show.guid or ''
     if 'tmdb' in guid:
         return guid.split('//')[1].split('?')[0]
-    for guid in plex_show.guids:
-        if 'tmdb' in guid.id.lower():
-            return guid.id.split('//')[1].split('?')[0]
-    search_url = f'https://api.themoviedb.org/3/search/tv?api_key={CONFIG["tmdb"]["api_key"]}&query={requests.utils.quote(title)}'
+    for guid_obj in plex_show.guids:
+        if 'tmdb' in guid_obj.id.lower():
+            return guid_obj.id.split('//')[1].split('?')[0]
+    search_url = get_api_url('tmdb', f'search/tv?query={requests.utils.quote(title)}')
+    if not search_url: return None
     try:
         r = requests.get(search_url)
         r.raise_for_status()
@@ -212,7 +225,8 @@ def get_show_details(tmdb_id):
     if not tmdb_id:
         return None
     
-    url = f'https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={CONFIG["tmdb"]["api_key"]}'
+    url = get_api_url('tmdb', f'tv/{tmdb_id}')
+    if not url: return None
     try:
         r = requests.get(url)
         r.raise_for_status()
@@ -240,7 +254,8 @@ def get_show_poster(tmdb_id):
     if not tmdb_id:
         return None
     
-    url = f'https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={CONFIG["tmdb"]["api_key"]}'
+    url = get_api_url('tmdb', f'tv/{tmdb_id}')
+    if not url: return None
     try:
         r = requests.get(url)
         r.raise_for_status()
@@ -253,7 +268,8 @@ def get_show_poster(tmdb_id):
     return None
 
 def get_series_status(tmdb_id):
-    url = f'https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={CONFIG["tmdb"]["api_key"]}'
+    url = get_api_url('tmdb', f'tv/{tmdb_id}')
+    if not url: return None
     try:
         r = requests.get(url)
         r.raise_for_status()
@@ -282,7 +298,8 @@ def get_movie_tmdb_id(plex_movie):
     for guid in plex_movie.guids:
         if 'tmdb' in guid.id:
             return guid.id.split('//')[1]
-    search_url = f'https://api.themoviedb.org/3/search/movie?api_key={CONFIG["tmdb"]["api_key"]}&query={requests.utils.quote(plex_movie.title)}'
+    search_url = get_api_url('tmdb', f'search/movie?query={requests.utils.quote(plex_movie.title)}')
+    if not search_url: return None
     try:
         r = requests.get(search_url)
         r.raise_for_status()
@@ -296,7 +313,8 @@ def get_movie_tmdb_id(plex_movie):
 def get_movie_details(tmdb_id):
     if not tmdb_id:
         return None
-    url = f'https://api.themoviedb.org/3/movie/{tmdb_id}?api_key={CONFIG["tmdb"]["api_key"]}'
+    url = get_api_url('tmdb', f'movie/{tmdb_id}')
+    if not url: return None
     try:
         r = requests.get(url)
         r.raise_for_status()
@@ -307,7 +325,8 @@ def get_movie_details(tmdb_id):
             'poster_path': f'https://image.tmdb.org/t/p/w500{data.get("poster_path")}' if data.get('poster_path') else None,
             'overview': data.get('overview'),
             'release_date': data.get('release_date'),
-            'studio': studio
+            'studio': studio,
+            'belongs_to_collection': data.get('belongs_to_collection')
         }
     except:
         return None
@@ -315,9 +334,13 @@ def get_movie_details(tmdb_id):
 def fetch_tmdb_episodes(tmdb_id):
     eps = set()
     try:
-        show_info = requests.get(f'https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={CONFIG["tmdb"]["api_key"]}').json()
+        show_info_url = get_api_url('tmdb', f'tv/{tmdb_id}')
+        if not show_info_url: return eps
+        show_info = requests.get(show_info_url).json()
         for season_num in range(1, show_info.get('number_of_seasons', 0) + 1):
-            season = requests.get(f'https://api.themoviedb.org/3/tv/{tmdb_id}/season/{season_num}?api_key={CONFIG["tmdb"]["api_key"]}').json()
+            season_url = get_api_url('tmdb', f'tv/{tmdb_id}/season/{season_num}')
+            if not season_url: continue
+            season = requests.get(season_url).json()
             for ep in season.get('episodes', []):
                 eps.add((season_num, ep['episode_number']))
     except:
@@ -359,7 +382,8 @@ def get_season_details(tmdb_id, season_number):
     if not tmdb_id or not season_number:
         return None
     
-    url = f'https://api.themoviedb.org/3/tv/{tmdb_id}/season/{season_number}?api_key={CONFIG["tmdb"]["api_key"]}'
+    url = get_api_url('tmdb', f'tv/{tmdb_id}/season/{season_number}')
+    if not url: return None
     try:
         r = requests.get(url)
         r.raise_for_status()
@@ -462,38 +486,40 @@ def run_scan_thread():
             SCAN_STATUS['current_show'] = show.title
             SCAN_STATUS['status_message'] = f'Processing {show.title}...'
             
-            # Get TMDB ID
-            SCAN_STATUS['status_message'] = f'Finding TMDb match for {show.title}...'
-            tmdb_id = get_tmdb_id(show)
-            app.logger.debug(f"TMDb ID for {show.title}: {tmdb_id}")
             
+            show_id = None
             poster_url = None
             details = None
-            if tmdb_id:
-                poster_url = get_show_poster(tmdb_id)
-                details = get_show_details(tmdb_id)
+            series_status = 'Unknown'
+            all_eps = set()
+
+            SCAN_STATUS['status_message'] = f'Finding TMDb match for {show.title}...'
+            show_id = get_tmdb_id(show)
+            app.logger.debug(f"TMDb ID for {show.title}: {show_id}")
+            if show_id:
+                poster_url = get_show_poster(show_id)
+                details = get_show_details(show_id)
+                series_status = get_series_status(show_id)
+                all_eps = fetch_tmdb_episodes(show_id)
                 app.logger.debug(f"Fetched TMDB details for {show.title}.")
-            
-            if not tmdb_id:
-                app.logger.debug(f"No TMDb ID found for {show.title}. Inserting with Unknown status.")
+
+            if not show_id:
+                app.logger.debug(f"No metadata ID found for {show.title}. Inserting with Unknown status.")
                 # Insert into DB with unknown status
                 insert_tv_show(show.title, None, None, None, None, 'Unknown', 'Unknown', 0, 0, [], 0.0, [])
                 SCAN_STATUS['processed_shows'] += 1
                 SCAN_STATUS['progress'] = (SCAN_STATUS['processed_shows'] / SCAN_STATUS['total_shows']) * 100
                 continue
             
-            app.logger.debug(f"Processing {show.title} (TMDb ID: {tmdb_id})")
+            app.logger.debug(f"Processing {show.title} (ID: {show_id}) from tmdb")
             
             # Get series status
             SCAN_STATUS['status_message'] = f'Checking series status for {show.title}...'
-            series_status = get_series_status(tmdb_id)
-            app.logger.debug(f"DEBUG: Series status for {show.title}: {series_status}")
             
             # Compare episodes
             SCAN_STATUS['status_message'] = f'Comparing episodes for {show.title}...'
             existing, existing_episode_details = get_existing_episodes(show)
-            all_eps = fetch_tmdb_episodes(tmdb_id)
-            app.logger.debug(f"DEBUG: Compared episodes for {show.title}. Existing: {len(existing)}, All TMDB: {len(all_eps)}")
+            app.logger.debug(f"DEBUG: Compared episodes for {show.title}. Existing: {len(existing)}, All tmdb: {len(all_eps)}")
             
             # Filter out future episodes when calculating missing episodes
             aired_missing = []
@@ -504,7 +530,8 @@ def run_scan_thread():
                 air_date = None
                 has_aired = True
                 
-                season_details = get_season_details(tmdb_id, season_num)
+                season_details = get_season_details(show_id, season_num)
+
                 if season_details and 'episodes' in season_details:
                     for ep in season_details.get('episodes', []):
                         if ep.get('episode_number') == ep_num:
@@ -531,7 +558,7 @@ def run_scan_thread():
             # Refine series status based on missing episodes and future episodes
             if future_episodes:
                 display_series_status = f"{overall_status} - Upcoming"
-            elif series_status == "Returning Series":
+            elif series_status == "Returning Series" or series_status == "Continuing": # TVDB uses "Continuing"
                 display_series_status = f"{overall_status} - Ongoing"
             elif series_status in ["Ended", "Canceled"]:
                 display_series_status = f"{overall_status} - {series_status}"
@@ -541,7 +568,7 @@ def run_scan_thread():
             app.logger.debug(f"DEBUG: Inserting/Updating TV Show {show.title} in DB.")
             tv_show_id = insert_tv_show(
                 show.title,
-                tmdb_id,
+                show_id,
                 poster_url,
                 details.get('overview') if details else None,
                 details.get('first_air_date') if details else None,
@@ -559,7 +586,8 @@ def run_scan_thread():
             # Insert/Update Seasons and Episodes
             unique_season_nums = sorted(list(set([s for s, e in all_eps])))
             for season_num in unique_season_nums:
-                season_details = get_season_details(tmdb_id, season_num)
+                season_details = get_season_details(show_id, season_num)
+
                 if season_details:
                     season_id = insert_season(
                         tv_show_id,
@@ -593,353 +621,20 @@ def run_scan_thread():
             app.logger.debug(f"DEBUG: Progress for {show.title}: {SCAN_STATUS['progress']}%")
             
             time.sleep(random.uniform(0.2, 0.5))
-        
-        # Update scan status message
-        if SCAN_STATUS['stop_requested']:
-            SCAN_STATUS['status_message'] = f'Scan stopped by user. Processed {SCAN_STATUS["processed_shows"]} of {SCAN_STATUS["total_shows"]} shows.'
-        else:
-            SCAN_STATUS['status_message'] = 'Scan complete.'
-            SCAN_STATUS['progress'] = 100
-        
-        time.sleep(1)
+
+        SCAN_STATUS['status_message'] = 'Scan complete.'
+        app.logger.debug("TV show scan finished.")
+
     except Exception as e:
-        SCAN_STATUS['status_message'] = f'Error: {str(e)}'
-        app.logger.error(f"ERROR: Scan failed with exception: {e}")
+        SCAN_STATUS['status_message'] = f'Error during scan: {e}'
+        app.logger.error(f"Exception in run_scan_thread: {e}", exc_info=True)
     finally:
         SCAN_STATUS['in_progress'] = False
         SCAN_STATUS['stop_requested'] = False
-
-@app.route('/')
-def index():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM tv_shows")
-    shows_data = cursor.fetchall()
-    conn.close()
-
-    results = {}
-    total_shows = len(shows_data)
-    incomplete_shows = 0
-    complete_shows = 0
-    unknown_shows = 0
-
-    for show in shows_data:
-        show_dict = dict(show)
-        if show_dict['status'] == 'Incomplete':
-            incomplete_shows += 1
-        elif show_dict['status'] == 'Complete':
-            complete_shows += 1
-        elif show_dict['status'] == 'Unknown':
-            unknown_shows += 1
-        
-        # Convert genres and networks back to list from JSON string
-        if show_dict['genres']:
-            show_dict['genres'] = json.loads(show_dict['genres'])
-        if show_dict['networks']:
-            show_dict['networks'] = json.loads(show_dict['networks'])
-        results[show_dict['title']] = show_dict
-
-    ignored_shows_path = os.path.join(os.path.dirname(__file__), 'ignore.json')
-    ignored = []
-    if os.path.exists(ignored_shows_path):
-        with open(ignored_shows_path, 'r') as f:
-            ignored = json.load(f)
-
-    return render_template('index.html', 
-                           results=results, 
-                           ignored=ignored,
-                           total_shows=total_shows,
-                           incomplete_shows=incomplete_shows,
-                           complete_shows=complete_shows,
-                           unknown_shows=unknown_shows)
-
-@app.route('/show/<path:title>')
-def show_details(title):
-    title = unquote(title)
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM tv_shows WHERE title = ?", (title,))
-    show_data = cursor.fetchone()
-
-    if show_data:
-        show_data = dict(show_data)
-        # Convert genres and networks back to list from JSON string
-        if show_data['genres']:
-            show_data['genres'] = json.loads(show_data['genres'])
-        if show_data['networks']:
-            show_data['networks'] = json.loads(show_data['networks'])
-
-        # Fetch seasons and episodes
-        cursor.execute("SELECT * FROM seasons WHERE tv_show_id = ?", (show_data['id'],))
-        seasons_raw = cursor.fetchall()
-        seasons_data = {}
-        for season_row in seasons_raw:
-            season_dict = dict(season_row)
-            cursor.execute("SELECT * FROM episodes WHERE season_id = ?", (season_dict['id'],))
-            episodes_raw = cursor.fetchall()
-            season_episodes = {}
-            for episode_row in episodes_raw:
-                episode_dict = dict(episode_row)
-                season_episodes[episode_dict['episode_number']] = episode_dict
-            season_dict['episodes'] = season_episodes
-            seasons_data[season_dict['season_number']] = season_dict
-        
-        # Calculate missing and future episodes for display
-        missing_episodes_count = 0
-        future_episodes_count = 0
-        for season_num, season_data in seasons_data.items():
-            for episode_num, episode_data in season_data['episodes'].items():
-                if not episode_data['exists_in_plex']:
-                    air_date_obj = None
-                    if episode_data['air_date']:
-                        try:
-                            air_date_obj = datetime.strptime(episode_data['air_date'], '%Y-%m-%d')
-                        except ValueError:
-                            pass
-
-                    if air_date_obj and air_date_obj < datetime.now():
-                        missing_episodes_count += 1
-                    elif air_date_obj and air_date_obj >= datetime.now():
-                        future_episodes_count += 1
-
-        conn.close()
-        return render_template('show_details.html', 
-                               title=title, 
-                               show=show_data, 
-                               seasons=seasons_data,
-                               missing_episodes_count=missing_episodes_count,
-                               future_episodes_count=future_episodes_count,
-                               now=datetime.now())
-    
-    conn.close()
-    return redirect(url_for('index'))
-
-@app.route('/settings', methods=['GET'])
-def settings():
-    with open(CONFIG_PATH, 'r') as f:
-        config = json.load(f)
-    return render_template('settings.html', config=config)
-
-@app.route('/settings', methods=['POST'])
-def save_settings():
-    with open(CONFIG_PATH, 'r') as f:
-        config = json.load(f)
-    
-    config['plex']['url'] = request.form['plex_url']
-    config['plex']['token'] = request.form['plex_token']
-    config['plex']['library_section'] = request.form['plex_library_id']
-    config['plex']['movie_library_section'] = request.form['plex_movie_library_id']
-    config['tmdb']['api_key'] = request.form['tmdb_api_key']
-    config['prowlarr']['url'] = request.form['prowlarr_url']
-    config['prowlarr']['api_key'] = request.form['prowlarr_api_key']
-    config['qbittorrent']['host'] = request.form['qbittorrent_host']
-    config['qbittorrent']['port'] = int(request.form['qbittorrent_port'])
-    config['qbittorrent']['username'] = request.form['qbittorrent_username']
-    config['qbittorrent']['password'] = request.form['qbittorrent_password']
-    # Set default tags based on category mappings for backward compatibility
-    config['qbittorrent']['movie_tag'] = request.form.get('category_mapping_movies', 'movies')
-    config['qbittorrent']['tv_tag'] = request.form.get('category_mapping_tv', 'tv')
-    
-    # Category mappings
-    if 'category_mappings' not in config['qbittorrent']:
-        config['qbittorrent']['category_mappings'] = {}
-    config['qbittorrent']['category_mappings']['movies'] = request.form['category_mapping_movies']
-    config['qbittorrent']['category_mappings']['tv'] = request.form['category_mapping_tv']
-    
-    with open(CONFIG_PATH, 'w') as f:
-        json.dump(config, f, indent=2)
-    
-    # Reload CONFIG after saving
-    global CONFIG
-    with open(CONFIG_PATH, 'r') as config_file:
-        CONFIG = json.load(config_file)
-        
-    return redirect(url_for('settings'))
-
-
-@app.route('/ignore/<path:title>')
-def ignore(title):
-    with open(os.path.join(os.path.dirname(__file__), 'ignore.json'), 'r+') as f:
-        ignored = json.load(f)
-        if title not in ignored:
-            ignored.append(title)
-            f.seek(0)
-            json.dump(ignored, f)
-            f.truncate()
-    return redirect(url_for('index'))
-
-@app.route('/unignore/<path:title>')
-def unignore(title):
-    with open(os.path.join(os.path.dirname(__file__), 'ignore.json'), 'r+') as f:
-        ignored = json.load(f)
-        if title in ignored:
-            ignored.remove(title)
-            f.seek(0)
-            json.dump(ignored, f)
-            f.truncate()
-    return redirect(url_for('index'))
-
-@app.route('/ignored')
-def ignored_shows():
-    if os.path.exists(os.path.join(os.path.dirname(__file__), 'ignore.json')):
-        with open(os.path.join(os.path.dirname(__file__), 'ignore.json'), 'r') as f:
-            ignored = json.load(f)
-    else:
-        ignored = []
-    return render_template('ignored.html', ignored=ignored)
-
-
-@app.route('/scan')
-def scan():
-    global SCAN_STATUS, MOVIE_SCAN_STATUS
-    
-    if SCAN_STATUS['in_progress'] or MOVIE_SCAN_STATUS['in_progress']:
-        return jsonify(success=False, error='Scan already in progress')
-    
-    # Start scan in background thread
-    thread = threading.Thread(target=run_scan_thread)
-    thread.daemon = True
-    thread.start()
-    
-    return jsonify(success=True)
-
-@app.route('/scan-status')
-def scan_status():
-    global SCAN_STATUS
-    
-    elapsed_time = None
-    if SCAN_STATUS['start_time']:
-        elapsed_seconds = (datetime.now() - SCAN_STATUS['start_time']).total_seconds()
-        elapsed_time = f"{int(elapsed_seconds // 60)}m {int(elapsed_seconds % 60)}s"
-    
-    app.logger.debug(f"Returning scan status: {SCAN_STATUS}")
-    return jsonify({
-        'in_progress': SCAN_STATUS['in_progress'],
-        'progress': round(SCAN_STATUS['progress'], 1),
-        'current_show': SCAN_STATUS['current_show'],
-        'processed_shows': SCAN_STATUS['processed_shows'],
-        'total_shows': SCAN_STATUS['total_shows'],
-        'status_message': SCAN_STATUS['status_message'],
-        'elapsed_time': elapsed_time,
-        'stop_requested': SCAN_STATUS['stop_requested']
-    })
-
-@app.route('/stop-scan')
-def stop_scan():
-    global SCAN_STATUS
-    
-    if not SCAN_STATUS['in_progress']:
-        return jsonify(success=False, error='No scan is currently in progress')
-    
-    SCAN_STATUS['stop_requested'] = True
-    return jsonify(success=True, message='Scan stop requested. Finishing current show and saving results...')
-
-
-
-@app.route('/get-show-details', methods=['GET'])
-def get_show_details_api():
-    title = request.args.get('title')
-    if not title:
-        return jsonify(success=False, error='No title provided')
-    
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM tv_shows WHERE title = ?", (title,))
-        show_data = cursor.fetchone()
-
-        if show_data:
-            show_data = dict(show_data)
-            if show_data['genres']:
-                show_data['genres'] = json.loads(show_data['genres'])
-            if show_data['networks']:
-                show_data['networks'] = json.loads(show_data['networks'])
-
-            # Fetch seasons and episodes
-            cursor.execute("SELECT * FROM seasons WHERE tv_show_id = ?", (show_data['id'],))
-            seasons_raw = cursor.fetchall()
-            seasons_data = {}
-            for season_row in seasons_raw:
-                season_dict = dict(season_row)
-                cursor.execute("SELECT * FROM episodes WHERE season_id = ?", (season_dict['id'],))
-                episodes_raw = cursor.fetchall()
-                season_episodes = {}
-                for episode_row in episodes_raw:
-                    episode_dict = dict(episode_row)
-                    season_episodes[episode_dict['episode_number']] = episode_dict
-                season_dict['episodes'] = season_episodes
-                seasons_data[season_dict['season_number']] = season_dict
-            show_data['seasons'] = seasons_data
-
-            conn.close()
-            return jsonify(success=True, data=show_data)
-        else:
-            conn.close()
-            return jsonify(success=False, error='Show not found')
-    except Exception as e:
-        return jsonify(success=False, error=str(e))
-
-@app.route('/movies')
-def movies():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM movies")
-    movies_data = cursor.fetchall()
-    conn.close()
-
-    movies_list = []
-    for movie in movies_data:
-        movies_list.append(dict(movie))
-
-    return render_template('movies.html', movies=movies_list)
-
-@app.route('/scan_movies')
-def scan_movies():
-    global SCAN_STATUS, MOVIE_SCAN_STATUS
-
-    if SCAN_STATUS['in_progress'] or MOVIE_SCAN_STATUS['in_progress']:
-        return jsonify(success=False, error='Scan already in progress')
-
-    thread = threading.Thread(target=run_movie_scan_thread)
-    thread.daemon = True
-    thread.start()
-
-    return jsonify(success=True)
-
-@app.route('/movie_scan_status')
-def movie_scan_status():
-    global MOVIE_SCAN_STATUS
-
-    elapsed_time = None
-    if MOVIE_SCAN_STATUS['start_time']:
-        elapsed_seconds = (datetime.now() - MOVIE_SCAN_STATUS['start_time']).total_seconds()
-        elapsed_time = f"{int(elapsed_seconds // 60)}m {int(elapsed_seconds % 60)}s"
-
-    app.logger.debug(f"Returning movie scan status: {MOVIE_SCAN_STATUS}")
-    return jsonify({
-        'in_progress': MOVIE_SCAN_STATUS['in_progress'],
-        'progress': round(MOVIE_SCAN_STATUS['progress'], 1),
-        'current_collection': MOVIE_SCAN_STATUS['current_collection'],
-        'processed_collections': MOVIE_SCAN_STATUS['processed_collections'],
-        'total_collections': MOVIE_SCAN_STATUS['total_collections'],
-        'status_message': MOVIE_SCAN_STATUS['status_message'],
-        'elapsed_time': elapsed_time,
-        'stop_requested': MOVIE_SCAN_STATUS['stop_requested']
-    })
-
-@app.route('/stop_movie_scan')
-def stop_movie_scan():
-    global MOVIE_SCAN_STATUS
-
-    if not MOVIE_SCAN_STATUS['in_progress']:
-        return jsonify(success=False, error='No movie scan is currently in progress')
-
-    MOVIE_SCAN_STATUS['stop_requested'] = True
-    return jsonify(success=True, message='Movie scan stop requested.')
+        app.logger.debug("SCAN_STATUS['in_progress'] set to False.")
 
 def run_movie_scan_thread():
     global MOVIE_SCAN_STATUS
-
     try:
         MOVIE_SCAN_STATUS['in_progress'] = True
         MOVIE_SCAN_STATUS['progress'] = 0
@@ -948,324 +643,597 @@ def run_movie_scan_thread():
         MOVIE_SCAN_STATUS['stop_requested'] = False
 
         plex = PlexServer(CONFIG['plex']['url'], CONFIG['plex']['token'])
-        plex_movies = plex.library.section(CONFIG['plex']['movie_library_section']).all()
-        plex_movie_titles = {m.title for m in plex_movies}
+        movie_section = plex.library.section(CONFIG['plex']['movie_library_section'])
+        
+        MOVIE_SCAN_STATUS['status_message'] = 'Fetching all movies from Plex...'
+        all_plex_movies = movie_section.all()
+        
+        plex_movie_tmdb_ids = {get_movie_tmdb_id(m) for m in all_plex_movies if get_movie_tmdb_id(m)}
 
-        # Get all movie titles from the database
+        # Clear old movie and collection data
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT title FROM movies")
-        db_movie_titles = {row['title'] for row in cursor.fetchall()}
+        cursor.execute("DELETE FROM movies")
+        cursor.execute("DELETE FROM missing_movies")
+        cursor.execute("DELETE FROM collections")
+        conn.commit()
         conn.close()
 
-        # Find and delete movies no longer in Plex
-        movies_to_delete = db_movie_titles - plex_movie_titles
-        if movies_to_delete:
-            app.logger.debug(f"Deleting {len(movies_to_delete)} movies no longer in Plex: {movies_to_delete}")
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            for title in movies_to_delete:
-                cursor.execute("DELETE FROM movies WHERE title = ?", (title,))
-            conn.commit()
-            conn.close()
-
-        movies = plex_movies
-
-        MOVIE_SCAN_STATUS['total_collections'] = len(movies) # Treat each movie as a collection for progress
+        processed_collection_tmdb_ids = set()
+        
+        MOVIE_SCAN_STATUS['total_collections'] = len(all_plex_movies)
         MOVIE_SCAN_STATUS['processed_collections'] = 0
 
-        for movie in movies:
+        for movie in all_plex_movies:
             if MOVIE_SCAN_STATUS['stop_requested']:
                 MOVIE_SCAN_STATUS['status_message'] = 'Movie scan stopped by user.'
                 break
 
             MOVIE_SCAN_STATUS['current_collection'] = movie.title
-            MOVIE_SCAN_STATUS['status_message'] = f'Processing {movie.title}...'
-
-            tmdb_id = get_movie_tmdb_id(movie)
-            movie_details = None
-            if tmdb_id:
-                movie_details = get_movie_details(tmdb_id)
             
-            if movie_details:
-                insert_movie(
-                    movie.title,
-                    tmdb_id,
-                    movie_details.get('poster_path'),
-                    movie_details.get('overview'),
-                    movie_details.get('release_date'),
-                    movie_details.get('studio')
-                )
+            tmdb_id = get_movie_tmdb_id(movie)
+            if not tmdb_id:
+                MOVIE_SCAN_STATUS['processed_collections'] += 1
+                MOVIE_SCAN_STATUS['progress'] = (MOVIE_SCAN_STATUS['processed_collections'] / MOVIE_SCAN_STATUS['total_collections']) * 100
+                continue
+
+            details = get_movie_details(tmdb_id)
+            if not details:
+                MOVIE_SCAN_STATUS['processed_collections'] += 1
+                MOVIE_SCAN_STATUS['progress'] = (MOVIE_SCAN_STATUS['processed_collections'] / MOVIE_SCAN_STATUS['total_collections']) * 100
+                continue
+
+            collection_info = details.get('belongs_to_collection')
+            collection_tmdb_id = str(collection_info['id']) if collection_info else None
+            
+            insert_movie(
+                details['title'],
+                tmdb_id,
+                details['poster_path'],
+                details['overview'],
+                details['release_date'],
+                details['studio'],
+                collection_tmdb_id
+            )
+
+            if not collection_info:
+                # This movie is not in a collection. Create a single movie collection.
+                insert_collection(details['title'], f"movie_{tmdb_id}", details['poster_path'])
+                MOVIE_SCAN_STATUS['processed_collections'] += 1
+                MOVIE_SCAN_STATUS['progress'] = (MOVIE_SCAN_STATUS['processed_collections'] / MOVIE_SCAN_STATUS['total_collections']) * 100
+                continue
+
+            collection_tmdb_id = str(collection_info['id'])
+
+            if collection_tmdb_id in processed_collection_tmdb_ids:
+                MOVIE_SCAN_STATUS['processed_collections'] += 1
+                MOVIE_SCAN_STATUS['progress'] = (MOVIE_SCAN_STATUS['processed_collections'] / MOVIE_SCAN_STATUS['total_collections']) * 100
+                continue
+
+            # Fetch collection details from TMDB
+            collection_url = get_api_url('tmdb', f'collection/{collection_tmdb_id}')
+            if not collection_url: continue
+            
+            try:
+                r = requests.get(collection_url)
+                r.raise_for_status()
+                collection_data = r.json()
+                
+                collection_id = insert_collection(collection_data['name'], collection_tmdb_id, f"https://image.tmdb.org/t/p/w500{collection_data.get('poster_path')}")
+
+                # Get movies from TMDB collection and find missing ones
+                for movie_part in collection_data.get('parts', []):
+                    part_tmdb_id = str(movie_part['id'])
+                    if part_tmdb_id not in plex_movie_tmdb_ids:
+                        insert_missing_movie(collection_id, movie_part['title'], part_tmdb_id, f"https://image.tmdb.org/t/p/w500{movie_part.get('poster_path')}", movie_part.get('release_date'))
+                
+                processed_collection_tmdb_ids.add(collection_tmdb_id)
+
+            except requests.exceptions.RequestException as e:
+                app.logger.error(f"Error fetching TMDB collection details for {collection_data.get('name')}: {e}")
 
             MOVIE_SCAN_STATUS['processed_collections'] += 1
             MOVIE_SCAN_STATUS['progress'] = (MOVIE_SCAN_STATUS['processed_collections'] / MOVIE_SCAN_STATUS['total_collections']) * 100
-            time.sleep(random.uniform(0.1, 0.3))
+            time.sleep(random.uniform(0.2, 0.5))
 
-        if not MOVIE_SCAN_STATUS['stop_requested']:
-            MOVIE_SCAN_STATUS['status_message'] = 'Movie scan complete.'
-            MOVIE_SCAN_STATUS['progress'] = 100
+        MOVIE_SCAN_STATUS['status_message'] = 'Movie scan complete.'
 
     except Exception as e:
-        MOVIE_SCAN_STATUS['status_message'] = f'Error: {str(e)}'
+        MOVIE_SCAN_STATUS['status_message'] = f'Error during movie scan: {e}'
+        app.logger.error(f"Exception in run_movie_scan_thread: {e}", exc_info=True)
     finally:
         MOVIE_SCAN_STATUS['in_progress'] = False
         MOVIE_SCAN_STATUS['stop_requested'] = False
 
+# === FLASK ROUTES ===
+@app.route('/')
+def index():
+    conn = get_db_connection()
+    shows = conn.execute('SELECT * FROM tv_shows ORDER BY title').fetchall()
+    conn.close()
+
+    results = {}
+    total_shows = 0
+    complete_shows = 0
+    incomplete_shows = 0
+    unknown_shows = 0
+    
+    ignored_shows_path = os.path.join(os.path.dirname(__file__), 'ignore.json')
+    ignored = []
+    if os.path.exists(ignored_shows_path):
+        with open(ignored_shows_path, 'r') as f:
+            ignored = json.load(f)
+
+    for show in shows:
+        if show['title'] in ignored:
+            continue
+        
+        total_shows += 1
+        if show['status'] == 'Complete':
+            complete_shows += 1
+        elif show['status'] == 'Incomplete':
+            incomplete_shows += 1
+        else:
+            unknown_shows += 1
+            
+        results[show['title']] = {
+            'poster_url': show['poster_url'],
+            'status': show['status'],
+            'series_status': show['series_status']
+        }
+
+    return render_template('index.html', results=results, ignored=ignored, total_shows=total_shows, complete_shows=complete_shows, incomplete_shows=incomplete_shows, unknown_shows=unknown_shows)
+
+@app.route('/scan')
+def scan():
+    global SCAN_STATUS
+    if SCAN_STATUS['in_progress']:
+        return jsonify({'error': 'A scan is already in progress.'}), 400
+    
+    scan_thread = threading.Thread(target=run_scan_thread)
+    scan_thread.start()
+    return jsonify({'success': True})
+
+@app.route('/scan-status')
+def scan_status():
+    global SCAN_STATUS
+    elapsed_time = None
+    if SCAN_STATUS['start_time']:
+        elapsed = datetime.now() - SCAN_STATUS['start_time']
+        elapsed_time = str(elapsed).split('.')[0]
+        
+    return jsonify({
+        'in_progress': SCAN_STATUS['in_progress'],
+        'progress': SCAN_STATUS['progress'],
+        'current_show': SCAN_STATUS['current_show'],
+        'total_shows': SCAN_STATUS['total_shows'],
+        'processed_shows': SCAN_STATUS['processed_shows'],
+        'status_message': SCAN_STATUS['status_message'],
+        'elapsed_time': elapsed_time,
+        'stop_requested': SCAN_STATUS['stop_requested']
+    })
+
+@app.route('/stop-scan')
+def stop_scan():
+    global SCAN_STATUS
+    if not SCAN_STATUS['in_progress']:
+        return jsonify({'error': 'No scan is in progress.'}), 400
+    
+    SCAN_STATUS['stop_requested'] = True
+    return jsonify({'success': True})
+
+@app.route('/show/<title>')
+def show_details(title):
+    title = unquote(title)
+    conn = get_db_connection()
+    show_row = conn.execute('SELECT * FROM tv_shows WHERE title = ?', (title,)).fetchone()
+    
+    if show_row:
+        show = dict(show_row)
+        show['genres'] = json.loads(show['genres']) if show['genres'] else []
+        show['networks'] = json.loads(show['networks']) if show['networks'] else []
+    else:
+        show = None
+
+    seasons = {}
+    if show:
+        db_seasons = conn.execute('SELECT * FROM seasons WHERE tv_show_id = ? ORDER BY season_number', (show['id'],)).fetchall()
+        for s in db_seasons:
+            seasons[s['season_number']] = {
+                'name': s['name'],
+                'overview': s['overview'],
+                'poster_path': s['poster_path'],
+                'air_date': s['air_date'],
+                'episodes': {}
+            }
+            db_episodes = conn.execute('SELECT * FROM episodes WHERE season_id = ? ORDER BY episode_number', (s['id'],)).fetchall()
+            for ep in db_episodes:
+                seasons[s['season_number']]['episodes'][ep['episode_number']] = dict(ep)
+
+    conn.close()
+    
+    missing_episodes_count = 0
+    future_episodes_count = 0
+    now = datetime.now()
+
+    if seasons:
+        for season_num, season in seasons.items():
+            for episode_num, episode in season['episodes'].items():
+                if not episode['exists_in_plex']:
+                    try:
+                        air_date = datetime.strptime(episode['air_date'], '%Y-%m-%d')
+                        if air_date < now:
+                            missing_episodes_count += 1
+                        else:
+                            future_episodes_count += 1
+                    except (ValueError, TypeError):
+                        missing_episodes_count += 1
+
+
+    return render_template('show_details.html', title=title, show=show, seasons=seasons, missing_episodes_count=missing_episodes_count, future_episodes_count=future_episodes_count, now=now)
+
+@app.route('/ignore/<title>')
+def ignore(title):
+    title = unquote(title)
+    ignored_shows_path = os.path.join(os.path.dirname(__file__), 'ignore.json')
+    ignored = []
+    if os.path.exists(ignored_shows_path):
+        with open(ignored_shows_path, 'r') as f:
+            ignored = json.load(f)
+    
+    if title not in ignored:
+        ignored.append(title)
+        with open(ignored_shows_path, 'w') as f:
+            json.dump(ignored, f)
+            
+    return jsonify({'success': True})
+
+@app.route('/unignore/<title>')
+def unignore(title):
+    title = unquote(title)
+    ignored_shows_path = os.path.join(os.path.dirname(__file__), 'ignore.json')
+    ignored = []
+    if os.path.exists(ignored_shows_path):
+        with open(ignored_shows_path, 'r') as f:
+            ignored = json.load(f)
+    
+    if title in ignored:
+        ignored.remove(title)
+        with open(ignored_shows_path, 'w') as f:
+            json.dump(ignored, f)
+            
+    return redirect(url_for('ignored_shows'))
+
+@app.route('/ignored')
+def ignored_shows():
+    ignored_shows_path = os.path.join(os.path.dirname(__file__), 'ignore.json')
+    ignored = []
+    if os.path.exists(ignored_shows_path):
+        with open(ignored_shows_path, 'r') as f:
+            ignored = json.load(f)
+    return render_template('ignored.html', ignored=ignored)
+
+@app.route('/movies')
+def movies():
+    conn = get_db_connection()
+    collections_from_db = get_all_collections()
+    
+    collections_with_movies = []
+    for coll in collections_from_db:
+        collection_tmdb_id = coll['tmdb_id']
+        
+        # Get missing movies
+        missing_movies_rows = get_missing_movies_by_collection_id(coll['id'])
+        missing_movies = [dict(m) for m in missing_movies_rows]
+        for m in missing_movies:
+            m['owned'] = False
+
+        # Get owned movies
+        if collection_tmdb_id.startswith('movie_'):
+            # Single movie collection
+            movie_tmdb_id = collection_tmdb_id[6:]
+            owned_movies_rows = conn.execute('SELECT * FROM movies WHERE tmdb_id = ?', (movie_tmdb_id,)).fetchall()
+        else:
+            owned_movies_rows = conn.execute('SELECT * FROM movies WHERE collection_tmdb_id = ?', (collection_tmdb_id,)).fetchall()
+        
+        owned_movies = [dict(m) for m in owned_movies_rows]
+        for m in owned_movies:
+            m['owned'] = True
+            
+        all_movies = sorted(owned_movies + missing_movies, key=lambda x: x.get('release_date') or '1900-01-01')
+
+        if all_movies:
+            collections_with_movies.append({
+                'collection': coll,
+                'movies': all_movies
+            })
+            
+    conn.close()
+    return render_template('movies.html', collections=collections_with_movies)
+
+@app.route('/scan_movies')
+def scan_movies():
+    global MOVIE_SCAN_STATUS
+    if MOVIE_SCAN_STATUS['in_progress']:
+        return jsonify({'error': 'A movie scan is already in progress.'}), 400
+    
+    movie_scan_thread = threading.Thread(target=run_movie_scan_thread)
+    movie_scan_thread.start()
+    return jsonify({'success': True})
+
+@app.route('/movie_scan_status')
+def movie_scan_status():
+    global MOVIE_SCAN_STATUS
+    elapsed_time = None
+    if MOVIE_SCAN_STATUS['start_time']:
+        elapsed = datetime.now() - MOVIE_SCAN_STATUS['start_time']
+        elapsed_time = str(elapsed).split('.')[0]
+        
+    return jsonify({
+        'in_progress': MOVIE_SCAN_STATUS['in_progress'],
+        'progress': MOVIE_SCAN_STATUS['progress'],
+        'current_collection': MOVIE_SCAN_STATUS['current_collection'],
+        'total_collections': MOVIE_SCAN_STATUS['total_collections'],
+        'processed_collections': MOVIE_SCAN_STATUS['processed_collections'],
+        'status_message': MOVIE_SCAN_STATUS['status_message'],
+        'elapsed_time': elapsed_time,
+        'stop_requested': MOVIE_SCAN_STATUS['stop_requested']
+    })
+
+@app.route('/stop_movie_scan')
+def stop_movie_scan():
+    global MOVIE_SCAN_STATUS
+    if not MOVIE_SCAN_STATUS['in_progress']:
+        return jsonify({'error': 'No movie scan is in progress.'}), 400
+    
+    MOVIE_SCAN_STATUS['stop_requested'] = True
+    return jsonify({'success': True})
+
 @app.route('/search')
 def search():
-    return render_template('search.html')
+    query = request.args.get('query', '')
+    return render_template('search.html', query=query)
+
+def search_prowlarr_api(query):
+    prowlarr_url = CONFIG['prowlarr']['url']
+    prowlarr_api_key = CONFIG['prowlarr']['api_key']
+    
+    url = f"{prowlarr_url}/api/v1/search?query={query}&apikey={prowlarr_api_key}"
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        app.logger.error(f"Error searching Prowlarr: {e}")
+        return None
+
+def parse_title(title):
+    resolution_match = re.search(r'(720p|1080p|2160p)', title, re.IGNORECASE)
+    codec_match = re.search(r'(x264|x265|h264|h265)', title, re.IGNORECASE)
+    
+    resolution = resolution_match.group(1) if resolution_match else 'Unknown'
+    codec = codec_match.group(1) if codec_match else 'Unknown'
+    
+    return resolution, codec
 
 @app.route('/search_prowlarr')
 def search_prowlarr():
     query = request.args.get('query')
     if not query:
-        return jsonify({'error': 'A search query is required'}), 400
+        return jsonify({'error': 'Query parameter is required'}), 400
 
-    headers = {
-        'X-Api-Key': CONFIG['prowlarr']['api_key']
-    }
-    params = {
-        'query': query,
-        'categories[]': [2000, 5000],
-        'type': 'search'
-    }
-    try:
-        response = requests.get(f"{CONFIG['prowlarr']['url']}/api/v1/search", params=params, headers=headers)
-        response.raise_for_status()
-        results = response.json()
+    results = search_prowlarr_api(query)
+    if results is None:
+        return jsonify({'error': 'Failed to fetch results from Prowlarr'}), 500
 
-        # Sort by seeders (descending)
-        results.sort(key=lambda x: x.get('seeders', 0), reverse=True)
+    # Check if item is already in Plex
+    plex = PlexServer(CONFIG['plex']['url'], CONFIG['plex']['token'])
+    plex_movies = {m.title.lower() for m in plex.library.section(CONFIG['plex']['movie_library_section']).all()}
+    plex_shows = {s.title.lower() for s in plex.library.section(CONFIG['plex']['library_section']).all()}
 
-        # Extract resolution and codec
-        for result in results:
-            title = result.get('title', '').lower()
-            if '2160p' in title or '4k' in title:
-                result['resolution'] = '4K'
-            elif '1080p' in title:
-                result['resolution'] = '1080p'
-            elif '720p' in title:
-                result['resolution'] = '720p'
-            else:
-                result['resolution'] = 'Unknown'
+    prowlarr_cat_mappings = CONFIG.get('prowlarr', {}).get('category_mappings', {})
 
-            if 'h.265' in title or 'hevc' in title:
-                result['codec'] = 'H.265'
-            elif 'h.264' in title or 'avc' in title:
-                result['codec'] = 'H.264'
-            elif 'av1' in title:
-                result['codec'] = 'AV1'
-            else:
-                result['codec'] = 'Unknown'
+    processed_results = []
+    for result in results:
+        resolution, codec = parse_title(result['title'])
+        
+        # Category detection based on Prowlarr category ID
+        prowlarr_cat_id = None
+        if 'categories' in result and result['categories']:
+            prowlarr_cat_id = result['categories'][0].get('id')
 
-        # Check against database - extract show/movie name from torrent title
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        for result in results:
-            result['owned'] = False  # Default to not owned
-            torrent_title = result.get('title', '').lower()
-            
-            # Try to extract the actual show/movie name from torrent title
-            # Remove common patterns like resolution, codec, release group, year
-            import re
-            
-            # For movies: Extract title and year if present
-            movie_pattern = r'^(.+?)\s*\(?(\d{4})\)?'
-            movie_match = re.match(movie_pattern, torrent_title)
-            if movie_match:
-                clean_title = movie_match.group(1).strip()
-                year = movie_match.group(2)
-                
-                # Check if this movie exists in database
-                cursor.execute("SELECT * FROM movies WHERE LOWER(title) LIKE ? OR LOWER(title) LIKE ?", 
-                             (f"%{clean_title}%", f"%{clean_title.replace(' ', '%')}%"))
-                movie = cursor.fetchone()
-                if movie:
-                    result['owned'] = True
-                    continue
-            
-            # For TV shows: Try various patterns
-            # Remove common TV show patterns like SxxExx, season info, etc.
-            tv_patterns = [
-                r'^(.+?)\s+s\d+',  # ShowName S01
-                r'^(.+?)\s+season\s+\d+',  # ShowName Season 1
-                r'^(.+?)\s+\d{4}',  # ShowName 2024
-                r'^(.+?)\s+complete',  # ShowName Complete
-            ]
-            
-            for pattern in tv_patterns:
-                tv_match = re.match(pattern, torrent_title, re.IGNORECASE)
-                if tv_match:
-                    clean_title = tv_match.group(1).strip()
-                    cursor.execute("SELECT * FROM tv_shows WHERE LOWER(title) LIKE ? OR LOWER(title) LIKE ?", 
-                                 (f"%{clean_title}%", f"%{clean_title.replace(' ', '%')}%"))
-                    show = cursor.fetchone()
-                    if show:
-                        result['owned'] = True
-                        break
-            
-            # Fallback: Try exact match with full title
-            if not result['owned']:
-                cursor.execute("SELECT * FROM movies WHERE LOWER(title) = ?", (torrent_title,))
-                movie = cursor.fetchone()
-                if movie:
-                    result['owned'] = True
-                else:
-                    cursor.execute("SELECT * FROM tv_shows WHERE LOWER(title) = ?", (torrent_title,))
-                    show = cursor.fetchone()
-                    if show:
-                        result['owned'] = True
-                        
-        conn.close()
-        return jsonify(results)
-    except requests.exceptions.RequestException as e:
-        return jsonify({'error': str(e)}), 500
+        category = 'Unknown'
+        for cat_name, cat_ids in prowlarr_cat_mappings.items():
+            if prowlarr_cat_id in cat_ids:
+                category = cat_name
+                break
+        
+        if category == 'Unknown':
+            app.logger.warning(f"Unmapped Prowlarr categoryId: {prowlarr_cat_id} for result: {result.get('title')}")
+
+        owned = False
+        if category == 'movies' and result['title'].lower() in plex_movies:
+            owned = True
+        elif category == 'tv' and result['title'].lower() in plex_shows:
+            owned = True
+
+        processed_results.append({
+            'title': result['title'],
+            'seeders': result.get('seeders', 0),
+            'size': result.get('size', 0),
+            'resolution': resolution,
+            'codec': codec,
+            'category': category,
+            'owned': owned,
+            'magnetUrl': result.get('magnetUrl'),
+            'downloadUrl': result.get('downloadUrl'),
+            'link': result.get('link'),
+            'guid': result.get('guid')
+        })
+    
+    # Filter and sort results
+    min_seeders = CONFIG['download_client']['min_seeders']
+    filtered_results = [r for r in processed_results if r['seeders'] >= min_seeders]
+    sorted_results = sorted(filtered_results, key=lambda x: x['seeders'], reverse=True)
+    
+    return jsonify(sorted_results)
 
 @app.route('/downloads')
 def downloads():
     return render_template('downloads.html')
 
-@app.route('/download', methods=['POST'])
-def download():
-    magnet_or_url = request.json.get('magnet')
-    categories = request.json.get('categories', [])
-    app.logger.debug(f"Received download request for: {magnet_or_url}")
-    app.logger.debug(f"Categories: {categories}")
-    
-    # Determine qBittorrent category based on Prowlarr categories
-    qb_category = determine_qb_category(categories)
-    app.logger.debug(f"Determined qBittorrent category: {qb_category}")
-    
-    if not magnet_or_url or magnet_or_url == 'undefined':
-        app.logger.error("Magnet link/URL is missing or invalid")
-        return jsonify({'error': 'Magnet link/URL is required'}), 400
-
-
-    try:
-        # Check if this is a Prowlarr proxy URL or a real magnet link
-        if magnet_or_url.startswith('magnet:'):
-            # It's already a real magnet link
-            magnet_link = magnet_or_url
-            app.logger.debug("Using direct magnet link")
-        elif 'prowlarr' in magnet_or_url.lower() or CONFIG['prowlarr']['url'] in magnet_or_url:
-            # It's a Prowlarr proxy URL, fetch the actual magnet link or torrent file
-            app.logger.debug("Fetching from Prowlarr proxy URL")
-            try:
-                response = requests.get(magnet_or_url, timeout=30, allow_redirects=False)
-                app.logger.debug(f"Prowlarr response status: {response.status_code}")
-                app.logger.debug(f"Prowlarr response headers: {dict(response.headers)}")
-                
-                # Check if we got redirected to a magnet link
-                if response.status_code in [301, 302, 303, 307, 308]:
-                    location = response.headers.get('Location', '')
-                    app.logger.debug(f"Redirect location: {location}")
-                    if location.startswith('magnet:'):
-                        magnet_link = location
-                        app.logger.debug(f"Found magnet link in redirect: {magnet_link}")
-                        # Now add the magnet link to qBittorrent
-                        qb = Client(host=CONFIG['qbittorrent']['host'], port=CONFIG['qbittorrent']['port'], username=CONFIG['qbittorrent']['username'], password=CONFIG['qbittorrent']['password'])
-                        qb.auth_log_in()
-                        result = qb.torrents_add(urls=magnet_link, category=qb_category)
-                        if result == 'Ok.':
-                            app.logger.debug(f"Successfully sent magnet to qBittorrent: {magnet_link}")
-                            return jsonify({'success': True})
-                        else:
-                            app.logger.error(f"Failed to add torrent. qBittorrent responded: {result}")
-                            return jsonify({'error': f"qBittorrent error: {result}"}), 500
-                
-                # If no redirect or not a magnet link, try to download as torrent file
-                response = requests.get(magnet_or_url, timeout=30, allow_redirects=True)
-                response.raise_for_status()
-                
-                # Check if final URL is a magnet link after following redirects
-                if response.url.startswith('magnet:'):
-                    magnet_link = response.url
-                    app.logger.debug(f"Got final magnet link: {magnet_link}")
-                    qb = Client(host=CONFIG['qbittorrent']['host'], port=CONFIG['qbittorrent']['port'], username=CONFIG['qbittorrent']['username'], password=CONFIG['qbittorrent']['password'])
-                    qb.auth_log_in()
-                    result = qb.torrents_add(urls=magnet_link, category=qb_category)
-                    if result == 'Ok.':
-                        app.logger.debug(f"Successfully sent magnet to qBittorrent: {magnet_link}")
-                        return jsonify({'success': True})
-                    else:
-                        app.logger.error(f"Failed to add torrent. qBittorrent responded: {result}")
-                        return jsonify({'error': f"qBittorrent error: {result}"}), 500
-                else:
-                    # Try to add as torrent file
-                    app.logger.debug("No magnet link found, trying to add as torrent file")
-                    qb = Client(host=CONFIG['qbittorrent']['host'], port=CONFIG['qbittorrent']['port'], username=CONFIG['qbittorrent']['username'], password=CONFIG['qbittorrent']['password'])
-                    qb.auth_log_in()
-                    result = qb.torrents_add(torrent_files=response.content, category=qb_category)
-                    if result == 'Ok.':
-                        app.logger.debug("Successfully sent torrent file to qBittorrent")
-                        return jsonify({'success': True})
-                    else:
-                        app.logger.error(f"Failed to add torrent file. qBittorrent responded: {result}")
-                        return jsonify({'error': f"qBittorrent error: {result}"}), 500
-                        
-            except Exception as e:
-                app.logger.error(f"Error fetching from Prowlarr URL: {e}")
-                return jsonify({'error': f"Failed to fetch from Prowlarr: {str(e)}"}), 500
-        else:
-            # Assume it's a direct URL to a torrent file
-            app.logger.debug("Treating as direct torrent file URL")
-            try:
-                response = requests.get(magnet_or_url, timeout=30)
-                response.raise_for_status()
-                qb = Client(host=CONFIG['qbittorrent']['host'], port=CONFIG['qbittorrent']['port'], username=CONFIG['qbittorrent']['username'], password=CONFIG['qbittorrent']['password'])
-                qb.auth_log_in()
-                result = qb.torrents_add(torrent_files=response.content, category=qb_category)
-                if result == 'Ok.':
-                    app.logger.debug("Successfully sent torrent file to qBittorrent")
-                    return jsonify({'success': True})
-                else:
-                    app.logger.error(f"Failed to add torrent file. qBittorrent responded: {result}")
-                    return jsonify({'error': f"qBittorrent error: {result}"}), 500
-            except Exception as e:
-                app.logger.error(f"Error downloading torrent file: {e}")
-                return jsonify({'error': f"Failed to download torrent: {str(e)}"}), 500
-
-        # If we got here with a direct magnet link, add it to qBittorrent
-        if 'magnet_link' in locals():
-            qb = Client(host=CONFIG['qbittorrent']['host'], port=CONFIG['qbittorrent']['port'], username=CONFIG['qbittorrent']['username'], password=CONFIG['qbittorrent']['password'])
-            qb.auth_log_in()
-            result = qb.torrents_add(urls=magnet_link, category=qb_category)
-            if result == 'Ok.':
-                app.logger.debug(f"Successfully sent magnet to qBittorrent: {magnet_link}")
-                return jsonify({'success': True})
-            else:
-                app.logger.error(f"Failed to add torrent. qBittorrent responded: {result}")
-                return jsonify({'error': f"qBittorrent error: {result}"}), 500
-            
-    except Exception as e:
-        app.logger.error(f"Unexpected error in download function: {e}")
-        return jsonify({'error': str(e)}), 500
-
 @app.route('/downloads_status')
 def downloads_status():
     try:
-        qb = Client(host=CONFIG['qbittorrent']['host'], port=CONFIG['qbittorrent']['port'], username=CONFIG['qbittorrent']['username'], password=CONFIG['qbittorrent']['password'])
-        try:
-            qb.auth_log_in()
-        except Exception as e:
-            app.logger.error(f"qBittorrent login failed: {e}")
-            return jsonify({'error': 'qBittorrent login failed'}), 500
-        torrents = qb.torrents_info()
-        torrent_list = []
+        qbt_client = Client(
+            host=CONFIG['qbittorrent']['host'],
+            port=CONFIG['qbittorrent']['port'],
+            username=CONFIG['qbittorrent']['username'],
+            password=CONFIG['qbittorrent']['password']
+        )
+        qbt_client.auth_log_in()
+        torrents = qbt_client.torrents_info()
+        qbt_client.auth_log_out()
+        
+        downloads = []
         for torrent in torrents:
-            torrent_list.append({
+            downloads.append({
                 'name': torrent.name,
                 'size': torrent.size,
-                'state': torrent.state,
                 'progress': torrent.progress,
-                'hash': torrent.hash
+                'state': torrent.state,
+                'dlspeed': torrent.dlspeed,
+                'upspeed': torrent.upspeed,
+                'eta': torrent.eta
             })
-        return jsonify(torrent_list)
-        return jsonify(torrents)
+        return jsonify(downloads)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        app.logger.error(f"Error fetching qBittorrent status: {e}")
+        return jsonify({'error': 'Could not connect to qBittorrent.'}), 500
+
+@app.route('/download', methods=['POST'])
+def download():
+    data = request.get_json()
+    link = data.get('link')
+    category = data.get('category')
+
+    if not link:
+        return jsonify({'error': 'Link is required'}), 400
+
+    try:
+        qbt_client = Client(
+            host=CONFIG['qbittorrent']['host'],
+            port=CONFIG['qbittorrent']['port'],
+            username=CONFIG['qbittorrent']['username'],
+            password=CONFIG['qbittorrent']['password']
+        )
+        qbt_client.auth_log_in()
+        
+        qbt_category = None
+        if category == 'movies':
+            qbt_category = CONFIG['qbittorrent']['category_mappings'].get('movies')
+        elif category == 'tv':
+            qbt_category = CONFIG['qbittorrent']['category_mappings'].get('tv')
+
+        if link.startswith('magnet:'):
+            qbt_client.torrents_add(urls=link, category=qbt_category)
+        else:
+            response = requests.get(link, allow_redirects=False)
+            if response.status_code in [301, 302, 307, 308] and 'Location' in response.headers:
+                redirect_url = response.headers['Location']
+                if redirect_url.startswith('magnet:'):
+                    qbt_client.torrents_add(urls=redirect_url, category=qbt_category)
+                else:
+                    final_response = requests.get(redirect_url)
+                    final_response.raise_for_status()
+                    torrent_content = final_response.content
+                    qbt_client.torrents_add(torrent_files=torrent_content, category=qbt_category)
+            else:
+                response.raise_for_status()
+                torrent_content = response.content
+                qbt_client.torrents_add(torrent_files=torrent_content, category=qbt_category)
+            
+        qbt_client.auth_log_out()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        app.logger.error(f"Error adding download to qBittorrent: {e}")
+        return jsonify({'error': 'Could not add download to qBittorrent.'}), 500
+
+@app.route('/settings')
+def settings():
+    return render_template('settings.html', config=CONFIG)
+
+@app.route('/save_settings', methods=['POST'])
+def save_settings():
+    global CONFIG
+    
+    # Update Plex settings
+    CONFIG['plex']['url'] = request.form['plex_url']
+    CONFIG['plex']['token'] = request.form['plex_token']
+    CONFIG['plex']['library_section'] = request.form['plex_library_id']
+    CONFIG['plex']['movie_library_section'] = request.form['plex_movie_library_id']
+    
+    # Update TMDb settings
+    CONFIG['tmdb']['api_key'] = request.form['tmdb_api_key']
+    
+    
+    
+    # Update Download Client settings
+    CONFIG['download_client']['min_quality'] = request.form['min_quality']
+    CONFIG['download_client']['max_quality'] = request.form['max_quality']
+    CONFIG['download_client']['codec'] = request.form['codec']
+    CONFIG['download_client']['min_seeders'] = int(request.form['min_seeders'])
+    
+    # Update Prowlarr settings
+    CONFIG['prowlarr']['url'] = request.form['prowlarr_url']
+    CONFIG['prowlarr']['api_key'] = request.form['prowlarr_api_key']
+    
+    # Update qBittorrent settings
+    CONFIG['qbittorrent']['host'] = request.form['qbittorrent_host']
+    CONFIG['qbittorrent']['port'] = int(request.form['qbittorrent_port'])
+    CONFIG['qbittorrent']['username'] = request.form['qbittorrent_username']
+    CONFIG['qbittorrent']['password'] = request.form['qbittorrent_password']
+    
+    with open(CONFIG_PATH, 'w') as config_file:
+        json.dump(CONFIG, config_file, indent=2)
+        
+    return redirect(url_for('settings'))
+
+@app.route('/test_prowlarr_connection', methods=['POST'])
+def test_prowlarr_connection():
+    data = request.get_json()
+    url = data.get('url')
+    api_key = data.get('api_key')
+    
+    if not url or not api_key:
+        return jsonify({'success': False, 'error': 'URL and API Key are required.'})
+        
+    try:
+        response = requests.get(f"{url}/api/v1/health?apikey={api_key}")
+        response.raise_for_status()
+        return jsonify({'success': True})
+    except requests.exceptions.RequestException as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/test_qbittorrent_connection', methods=['POST'])
+def test_qbittorrent_connection():
+    data = request.get_json()
+    host = data.get('host')
+    port = data.get('port')
+    username = data.get('username')
+    password = data.get('password')
+
+    if not host or not port:
+        return jsonify({'success': False, 'error': 'Host and Port are required.'})
+
+    try:
+        client = Client(host=host, port=port, username=username, password=password)
+        client.auth_log_in()
+        client.auth_log_out()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
-    app.run(debug=CONFIG['app']['debug'],
-            host=CONFIG['app']['host'],
-            port=CONFIG['app']['port'])
+    app.run(host=CONFIG['app']['host'], port=CONFIG['app']['port'], debug=CONFIG['app']['debug'])

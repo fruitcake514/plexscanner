@@ -1,10 +1,10 @@
 services:
   plextmdb:
     build: .
-    container_name: plextmdb
+    container_name: plexitrack
     ports:
-      - '5000:5000'
+      - '5555:5555'
     restart: unless-stopped
-    network_mode: host
     volumes:
       - ./config.json:/app/config.json
+      - ./data:/app/data

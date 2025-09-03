@@ -1,112 +1,78 @@
-# Plex Episode Tracker
+# PlexiTrack
 
-A Docker-based Flask application that tracks missing episodes in your Plex TV Show library by comparing with TMDB data.
+![PlexiTrack Logo](https://via.placeholder.com/300x150.png?text=PlexiTrack)
 
-## Features
+PlexiTrack is a web-based tool to scan your Plex media library, track missing episodes for your TV shows, and manage your movie collections. It integrates with Prowlarr and qBittorrent to help you find and download missing content.
 
-- Scans your Plex TV Show library and identifies missing episodes
-- Shows which series are complete or incomplete
-- Provides details about missing episodes
-- Displays upcoming episodes
-- Tracks series status (ongoing, ended, etc.)
+## Key Features
 
-## Installation
+-   **TV Show Tracking**: Scans your Plex TV show library and shows you which episodes are missing based on TMDb.
+-   **Movie Collection Management**: Identifies movies in your library that are part of a collection and shows you which movies from that collection are missing.
+-   **Prowlarr Integration**: Search for missing content on your Prowlarr indexers directly from the web interface.
+-   **qBittorrent Integration**: Send downloads directly to qBittorrent with the correct category.
+-   **Dockerized**: Easy to set up and run with Docker Compose.
+-   **Web Interface**: Modern and easy-to-use web interface to view your library status and manage downloads.
+
+## Getting Started
 
 ### Prerequisites
 
-- Docker and Docker Compose installed
-- A Plex server with TV Shows library
-- Plex token for API access
+-   Docker and Docker Compose installed on your system.
+-   A running Plex Media Server.
+-   A running Prowlarr instance.
+-   A running qBittorrent instance.
 
-### Quick Start
+### Installation
 
-1. Clone the repository:
-   ```
-   git clone https://github.com/yourusername/plex-episode-tracker.git
-   cd plex-episode-tracker
-   ```
+1.  **Clone the repository (or download the source code):**
+    ```sh
+    git clone https://github.com/your-username/plexitrack.git
+    cd plexitrack
+    ```
 
-2. Edit the `docker-compose.yml` file to update your Plex server details:
-   ```yaml
-   environment:
-     - PLEX_URL=http://your-plex-server:32400
-     - PLEX_TOKEN=your-plex-token
-     - PLEX_LIBRARY=TV Shows
-   ```
+2.  **Configure the application:**
+    -   Rename `config.json.example` to `config.json` (or create a new `config.json` file).
+    -   Edit `config.json` with your details for Plex, TMDb, Prowlarr, and qBittorrent.
 
-3. Start the application with Docker Compose:
-   ```
-   docker-compose up -d
-   ```
+3.  **Build and run the application with Docker Compose:**
+    ```sh
+    docker-compose up --build -d
+    ```
 
-4. Access the application at `http://localhost:8080`
+4.  **Access the web interface:**
+    -   Open your web browser and go to `http://localhost:5555` (or the port you configured).
 
-### Environment Variables
+## Configuration
 
-All configuration is handled through environment variables in the docker-compose.yml file:
+The application is configured via the `config.json` file. Here is an overview of the configuration options:
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| PLEX_URL | URL to your Plex server | http://localhost:32400 |
-| PLEX_TOKEN | Your Plex authentication token | (required) |
-| PLEX_LIBRARY | Name of your TV Shows library in Plex | TV Shows |
-| TMDB_API_KEY | Your TMDB API key | (required) |
-| APP_PORT | Port to run the web interface on | 8080 |
-| APP_DEBUG | Enable/disable Flask debug mode | false |
-| APP_HOST | Host to bind the web interface to | 0.0.0.0 |
-| APP_SCAN_RESULTS_PATH | Path to store scan results | scan_results.json |
+-   **`plex`**: Your Plex server URL, token, and library names.
+-   **`tmdb`**: Your TMDb API key.
+-   **`prowlarr`**: Your Prowlarr URL, API key, and category mappings.
+-   **`qbittorrent`**: Your qBittorrent host, port, username, password, and category mappings.
+-   **`download_client`**: Settings for filtering search results (quality, codec, seeders).
+-   **`app`**: Application settings (host, port, debug mode).
 
 ## Usage
 
-1. Open the web interface at `http://localhost:8080`
-2. Click "Scan Library" to begin scanning your Plex library
-3. View missing episodes for each show
-4. Click on a show to see detailed information about missing episodes
+-   **TV Shows Page**: Shows the status of your TV shows. Click the "Scan" button to scan your library.
+-   **Movies Page**: Shows your movie collections and missing movies. Click the "Scan" button to scan your library.
+-   **Search Page**: Search for torrents using Prowlarr.
+-   **Downloads Page**: View the status of your downloads in qBittorrent.
+-   **Settings Page**: Configure the application settings from the UI.
 
-## Updating
+## Screenshots
 
-To update the application:
+*(Placeholder for screenshots of the application)*
 
-```
-cd plex-episode-tracker
-git pull
-docker-compose down
-docker-compose up -d --build
-```
+| TV Shows Page | Movie Collections Page |
+| :-----------: | :--------------------: |
+| ![TV Shows](https://via.placeholder.com/400x250.png?text=TV+Shows+Page) | ![Movie Collections](https://via.placeholder.com/400x250.png?text=Movie+Collections) |
 
-## Troubleshooting
+## Contributing
 
-### Connection Issues
-
-If you're having trouble connecting to your Plex server:
-
-1. **Host Network Mode**: For local Plex servers, try using the host network mode by modifying docker-compose.yml:
-   ```yaml
-   services:
-     plex-episode-tracker:
-       # ... other settings
-       network_mode: "host"
-       # Remove the ports section when using host network
-   ```
-
-2. **IP Address**: Ensure you're using the correct IP address for your Plex server. For local installs, you might need to use the Docker host's IP instead of localhost.
-
-### Volume Permissions
-
-If you encounter permission issues with the scan_results.json file:
-
-```bash
-# Create the file with the correct permissions before starting the container
-touch scan_results.json
-chmod 666 scan_results.json
-```
-
-## Security Notes
-
-- Your Plex token grants access to your Plex server. Keep your docker-compose.yml file secure.
-- Consider using Docker secrets for sensitive information in production environments.
-- Make sure your GitHub repository is private if you're pushing the docker-compose.yml with your credentials.
+Contributions are welcome! Please feel free to open an issue or submit a pull request.
 
 ## License
 
-MIT
+This project is licensed under the MIT License. See the `LICENSE` file for details.

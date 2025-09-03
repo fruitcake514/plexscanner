@@ -1,16 +1,16 @@
 {
   "plex": {
-    "url": "xxx",
-    "token": "xxx",
+    "url": "http://192.168.1.5:32400",
+    "token": "C98iXfkvoHAQz1zf_STX",
     "library_section": "TV Shows",
     "movie_library_section": "Movies"
   },
   "tmdb": {
-    "api_key": "xxx"
+    "api_key": "a2c079689712769699d8d20249314e73"
   },
   "prowlarr": {
-    "url": "xxx",
-    "api_key": "xxx",
+    "url": "http://192.168.1.5:9696",
+    "api_key": "b3a58eb3a3864e3494f43fa0797e7116",
     "category_mappings": {
       "movies": [
         2000,
@@ -39,10 +39,10 @@
     }
   },
   "qbittorrent": {
-    "host": "xxx",
-    "port": xxx,
-    "username": "xxx",
-    "password": "xxx",
+    "host": "http://192.168.1.5",
+    "port": 9090,
+    "username": "admin",
+    "password": "QazWsxEdc123!@#",
     "category_mappings": {
       "movies": "movies",
       "tv": "tv"
