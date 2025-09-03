@@ -10,17 +10,49 @@
   },
   "prowlarr": {
     "url": "xxx",
-    "api_key": "xxx"
+    "api_key": "xxx",
+    "category_mappings": {
+      "movies": [
+        2000,
+        2010,
+        2020,
+        2030,
+        2040,
+        2045,
+        2050,
+        2060,
+        2070,
+        2080
+      ],
+      "tv": [
+        5000,
+        5010,
+        5020,
+        5030,
+        5040,
+        5045,
+        5050,
+        5060,
+        5070,
+        5080
+      ]
+    }
   },
   "qbittorrent": {
     "host": "xxx",
-    "port": "xxx",
+    "port": xxx,
     "username": "xxx",
     "password": "xxx",
     "category_mappings": {
       "movies": "movies",
       "tv": "tv"
     }
+  },
+  "download_client": {
+    "min_quality": "720p",
+    "max_quality": "1080p",
+    "codec": "x264",
+    "min_seeders": 1
   },
   "app": {
     "debug": true,
