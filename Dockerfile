@@ -9,7 +9,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
-RUN test -f ignore.json || echo "[]" > ignore.json
 
 EXPOSE 5555
 
