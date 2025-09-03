@@ -15,6 +15,11 @@
         </button>
     </div>
 
+    <!-- Search Bar -->
+    <div class="mb-6">
+        <input type="text" id="movie-search" class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500" placeholder="Search for a collection or movie...">
+    </div>
+
     <!-- Progress bar and scan information -->
     <div class="progress-container hidden mb-6" id="movieProgressContainer">
         <div class="flex justify-between mb-1">
@@ -32,167 +37,243 @@
         </div>
     </div>
 
-    {% if movies %}
-        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-        {% for movie in movies %}
-            <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden cursor-pointer transform transition duration-200 hover:scale-105 hover:shadow-xl"
-                 data-modal-target="#movie-modal-{{ movie.id }}">
-                <img src="{{ movie.poster_url }}" class="w-full h-auto object-cover" alt="{{ movie.title }} poster" onerror="this.onerror=null;this.src='https://via.placeholder.com/500x750.png?text=No+Poster';">
-                <div class="p-4">
-                    <h5 class="font-bold text-lg text-white text-center">{{ movie.title }}</h5>
+    <div id="collections-container">
+    {% if collections %}
+        {% for item in collections %}
+            <div class="bg-gray-800 rounded-lg shadow-lg mb-6 collection-item">
+                <div class="p-4 bg-gray-700 rounded-t-lg">
+                    <h2 class="text-2xl font-bold text-white collection-title">{{ item.collection.name }}</h2>
                 </div>
-            </div>
-
-            <!-- Modal Structure -->
-            <div id="movie-modal-{{ movie.id }}" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden">
-                <div class="bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto relative">
-                    <button class="absolute top-4 right-4 text-gray-400 hover:text-white text-2xl close-modal-btn"><i class="bi bi-x-lg"></i></button>
-                    <div class="p-6">
-                        <h5 class="text-2xl font-bold text-white mb-4">{{ movie.title }} ({{ movie.release_date.split('-')[0] if movie.release_date else 'N/A' }})</h5>
-                        {% if movie.overview %}
-                        <p class="text-gray-300 mb-6">{{ movie.overview }}</p>
-                        {% endif %}
-                        <p class="text-gray-400 text-sm">Release Date: {{ movie.release_date }}</p>
-                        {% if movie.studio %}
-                        <p class="text-gray-400 text-sm">Studio: {{ movie.studio }}</p>
-                        {% endif %}
+                <div class="p-4">
+                    <div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-4">
+                        {% for movie in item.movies %}
+                            <div class="relative movie-card cursor-pointer" data-movie-details='{{ movie | tojson }}' data-movie-title="{{ movie.title | lower }}">
+                                <img src="{{ movie.poster_url }}" class="w-full h-auto object-cover rounded-lg" alt="{{ movie.title }} poster" onerror="this.onerror=null;this.src='https://via.placeholder.com/500x750.png?text=No+Poster';">
+                                {% if not movie.owned %}
+                                <div class="absolute inset-0 bg-black opacity-60 rounded-lg"></div>
+                                <div class="absolute inset-0 flex items-center justify-center">
+                                    <span class="text-white text-lg font-bold">Missing</span>
+                                </div>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
                     </div>
                 </div>
             </div>
         {% endfor %}
-        </div>
     {% else %}
         <div class="bg-gray-800 p-6 rounded-lg shadow-lg text-center">
-            <p class="text-gray-400 text-lg">No movies scanned yet. Click "Scan Movie Library" to begin.</p>
+            <p class="text-gray-400 text-lg">No collections found. Run a scan to check.</p>
         </div>
     {% endif %}
+    </div>
+</div>
+
+<!-- Movie Details Modal -->
+<div id="movie-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden">
+    <div class="bg-gray-800 rounded-lg shadow-lg p-6 w-full max-w-3xl max-h-screen overflow-y-auto">
+        <div class="flex justify-between items-center mb-4">
+            <h2 id="modal-title" class="text-2xl font-bold text-white"></h2>
+            <button id="modal-close" class="text-gray-400 hover:text-white">&times;</button>
+        </div>
+        <div id="modal-content" class="text-white"></div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-    let movieScanInProgress = false;
-    let movieStatusCheckInterval;
+    document.addEventListener('DOMContentLoaded', function() {
+        // Modal script
+        const modal = document.getElementById('movie-modal');
+        const modalClose = document.getElementById('modal-close');
+        const modalTitle = document.getElementById('modal-title');
+        const modalContent = document.getElementById('modal-content');
 
-    function updateMovieScanUI(isScanning) {
-        const scanBtn = document.getElementById('run-movie-scan');
-        const scanText = scanBtn.querySelector('.scan-text');
-        const scanProgress = scanBtn.querySelector('.scan-progress');
-        const progressContainer = document.getElementById('movieProgressContainer');
+        document.querySelectorAll('.movie-card').forEach(card => {
+            card.addEventListener('click', () => {
+                const movieDetails = JSON.parse(card.dataset.movieDetails);
+                
+                modalTitle.textContent = movieDetails.title;
+                modalContent.innerHTML = `
+                    <div class="flex flex-col md:flex-row gap-6">
+                        <div class="md:w-1/3">
+                            <img src="${movieDetails.poster_url}" class="w-full h-auto object-cover rounded-lg">
+                        </div>
+                        <div class="md:w-2/3">
+                            <p class="text-gray-300 mb-4">${movieDetails.overview}</p>
+                            <p><strong>Release Date:</strong> ${movieDetails.release_date || 'N/A'}</p>
+                            <p><strong>Studio:</strong> ${movieDetails.studio || 'N/A'}</p>
+                            <p><strong>Status:</strong> ${movieDetails.owned ? 'Owned' : 'Missing'}</p>
+                            ${!movieDetails.owned ? `<a href="/search?query=${encodeURIComponent(movieDetails.title)}" class="mt-4 inline-block bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Search for Download</a>` : ''}
+                        </div>
+                    </div>
+                `;
+                
+                modal.classList.remove('hidden');
+            });
+        });
 
-        if (isScanning) {
-            scanBtn.disabled = true;
-            scanText.classList.add('hidden');
-            scanProgress.classList.remove('hidden');
-            scanBtn.classList.add('opacity-50', 'cursor-not-allowed');
-            progressContainer.classList.remove('hidden');
-        } else {
-            scanBtn.disabled = false;
-            scanText.classList.remove('hidden');
-            scanProgress.classList.add('hidden');
-            scanBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-            progressContainer.classList.add('hidden');
-        }
-    }
+        modalClose.addEventListener('click', () => {
+            modal.classList.add('hidden');
+        });
 
-    function checkMovieScanStatus() {
-        if (!movieScanInProgress) return;
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.classList.add('hidden');
+            }
+        });
 
-        fetch('/movie_scan_status')
-            .then(res => res.json())
-            .then(data => {
-                const progressBar = document.getElementById('movieScanProgressBar');
-                const scanStatus = document.getElementById('movieScanStatus');
-                const scanProgressText = document.getElementById('movieScanProgress');
-                const stopScanBtn = document.getElementById('stopMovieScanBtn');
+        // Search script
+        const searchInput = document.getElementById('movie-search');
+        searchInput.addEventListener('input', function() {
+            const query = this.value.toLowerCase();
+            document.querySelectorAll('.collection-item').forEach(collection => {
+                const collectionTitle = collection.querySelector('.collection-title').textContent.toLowerCase();
+                let collectionMatch = collectionTitle.includes(query);
+                let movieMatches = 0;
 
-                progressBar.style.width = data.progress + '%';
-                scanProgressText.textContent = Math.round(data.progress) + '%';
-
-                let statusMsg = data.status_message;
-                if (data.in_progress && !data.stop_requested) {
-                    if (data.total_collections !== 'N/A') {
-                        statusMsg += ` (Collection ${data.processed_collections}/${data.total_collections})`;
+                collection.querySelectorAll('.movie-card').forEach(movieCard => {
+                    const movieTitle = movieCard.dataset.movieTitle;
+                    if (movieTitle.includes(query)) {
+                        movieCard.style.display = 'block';
+                        movieMatches++;
+                    } else {
+                        movieCard.style.display = 'none';
                     }
-                }
-                if (data.elapsed_time) {
-                    statusMsg += ` - Running for ${data.elapsed_time}`;
-                }
-                scanStatus.textContent = statusMsg;
+                });
 
-                if (data.stop_requested) {
-                    stopScanBtn.disabled = true;
-                    stopScanBtn.innerHTML = '<i class="bi bi-hourglass-split mr-1"></i> Stopping...';
+                if (collectionMatch || movieMatches > 0) {
+                    collection.style.display = 'block';
+                } else {
+                    collection.style.display = 'none';
                 }
+            });
+        });
 
-                if (!data.in_progress) {
+        // Scan script
+        let movieScanInProgress = false;
+        let movieStatusCheckInterval;
+
+        function updateMovieScanUI(isScanning) {
+            const scanBtn = document.getElementById('run-movie-scan');
+            const scanText = scanBtn.querySelector('.scan-text');
+            const scanProgress = scanBtn.querySelector('.scan-progress');
+            const progressContainer = document.getElementById('movieProgressContainer');
+
+            if (isScanning) {
+                scanBtn.disabled = true;
+                scanText.classList.add('hidden');
+                scanProgress.classList.remove('hidden');
+                scanBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                progressContainer.classList.remove('hidden');
+            } else {
+                scanBtn.disabled = false;
+                scanText.classList.remove('hidden');
+                scanProgress.classList.add('hidden');
+                scanBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                progressContainer.classList.add('hidden');
+            }
+        }
+
+        function checkMovieScanStatus() {
+            if (!movieScanInProgress) return;
+
+            fetch('/movie_scan_status')
+                .then(res => res.json())
+                .then(data => {
+                    const progressBar = document.getElementById('movieScanProgressBar');
+                    const scanStatus = document.getElementById('movieScanStatus');
+                    const scanProgressText = document.getElementById('movieScanProgress');
+                    const stopScanBtn = document.getElementById('stopMovieScanBtn');
+
+                    progressBar.style.width = data.progress + '%';
+                    scanProgressText.textContent = Math.round(data.progress) + '%';
+
+                    let statusMsg = data.status_message;
+                    if (data.in_progress && !data.stop_requested) {
+                        if (data.total_collections !== 'N/A') {
+                            statusMsg += ` (Movie ${data.processed_collections}/${data.total_collections})`;
+                        }
+                    }
+                    if (data.elapsed_time) {
+                        statusMsg += ` - Running for ${data.elapsed_time}`;
+                    }
+                    scanStatus.textContent = statusMsg;
+
+                    if (data.stop_requested) {
+                        stopScanBtn.disabled = true;
+                        stopScanBtn.innerHTML = '<i class="bi bi-hourglass-split mr-1"></i> Stopping...';
+                    }
+
+                    if (!data.in_progress) {
+                        clearInterval(movieStatusCheckInterval);
+                        movieScanInProgress = false;
+                        if (data.stop_requested) {
+                            scanStatus.textContent = 'Movie scan stopped. Reloading...';
+                        } else if (data.progress >= 100) {
+                            scanStatus.textContent = 'Movie scan complete! Reloading...';
+                        } else {
+                            scanStatus.textContent = 'Movie scan finished. Reloading...';
+                        }
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 2000);
+                    }
+                })
+                .catch(err => {
+                    console.error('Movie status check error:', err);
                     clearInterval(movieStatusCheckInterval);
                     movieScanInProgress = false;
-                    if (data.stop_requested) {
-                        scanStatus.textContent = 'Movie scan stopped. Reloading...';
-                    } else if (data.progress >= 100) {
-                        scanStatus.textContent = 'Movie scan complete! Reloading...';
-                    } else {
-                        scanStatus.textContent = 'Movie scan finished. Reloading...';
-                    }
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 2000);
-                }
-            })
-            .catch(err => {
-                console.error('Movie status check error:', err);
-                clearInterval(movieStatusCheckInterval);
-                movieScanInProgress = false;
-                updateMovieScanUI(false);
-                alert("An error occurred while checking the scan status.");
-            });
-    }
-
-    function runMovieScan() {
-        if (movieScanInProgress) return;
-
-        fetch('/scan_movies')
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    movieScanInProgress = true;
-                    updateMovieScanUI(true);
-                    movieStatusCheckInterval = setInterval(checkMovieScanStatus, 1000);
-                } else {
-                    alert(data.error || 'Movie scan failed to start.');
-                }
-            })
-            .catch(err => {
-                console.error('Fetch error:', err);
-                alert('Failed to run movie scan.');
-            });
-    }
-
-    function stopMovieScan() {
-        if (!movieScanInProgress) return;
-
-        if (!confirm('Are you sure you want to stop the movie scan? Progress so far will be saved.')) {
-            return;
+                    updateMovieScanUI(false);
+                    alert("An error occurred while checking the scan status.");
+                });
         }
 
-        fetch('/stop_movie_scan')
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    const scanStatus = document.getElementById('movieScanStatus');
-                    scanStatus.textContent = 'Stopping movie scan... Saving results...';
-                    document.getElementById('stopMovieScanBtn').disabled = true;
-                } else {
-                    alert(data.error || 'Failed to stop movie scan.');
-                }
-            })
-            .catch(err => {
-                console.error('Fetch error:', err);
-                alert('Failed to stop movie scan.');
-            });
-    }
+        function runMovieScan() {
+            if (movieScanInProgress) return;
 
-    document.addEventListener('DOMContentLoaded', function() {
+            fetch('/scan_movies')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        movieScanInProgress = true;
+                        updateMovieScanUI(true);
+                        movieStatusCheckInterval = setInterval(checkMovieScanStatus, 1000);
+                    } else {
+                        alert(data.error || 'Movie scan failed to start.');
+                    }
+                })
+                .catch(err => {
+                    console.error('Fetch error:', err);
+                    alert('Failed to run movie scan.');
+                });
+        }
+
+        function stopMovieScan() {
+            if (!movieScanInProgress) return;
+
+            if (!confirm('Are you sure you want to stop the movie scan? Progress so far will be saved.')) {
+                return;
+            }
+
+            fetch('/stop_movie_scan')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        const scanStatus = document.getElementById('movieScanStatus');
+                        scanStatus.textContent = 'Stopping movie scan... Saving results...';
+                        document.getElementById('stopMovieScanBtn').disabled = true;
+                    } else {
+                        alert(data.error || 'Failed to stop movie scan.');
+                    }
+                })
+                .catch(err => {
+                    console.error('Fetch error:', err);
+                    alert('Failed to stop movie scan.');
+                });
+        }
+
         document.getElementById('run-movie-scan').addEventListener('click', runMovieScan);
         document.getElementById('stopMovieScanBtn').addEventListener('click', stopMovieScan);
         
@@ -203,34 +284,6 @@
                 updateMovieScanUI(true);
                 movieStatusCheckInterval = setInterval(checkMovieScanStatus, 1000);
             }
-        });
-
-        // Modal functionality
-        document.querySelectorAll('[data-modal-target]').forEach(card => {
-            card.addEventListener('click', function() {
-                const modalId = this.dataset.modalTarget;
-                const modal = document.querySelector(modalId);
-                modal.classList.remove('hidden');
-                document.body.style.overflow = 'hidden'; // Prevent scrolling
-            });
-        });
-
-        document.querySelectorAll('.close-modal-btn').forEach(button => {
-            button.addEventListener('click', function() {
-                const modal = this.closest('.fixed');
-                modal.classList.add('hidden');
-                document.body.style.overflow = ''; // Restore scrolling
-            });
-        });
-
-        // Close modal if clicked outside content
-        document.querySelectorAll('.fixed.inset-0').forEach(modal => {
-            modal.addEventListener('click', function(event) {
-                if (event.target === modal) {
-                    modal.classList.add('hidden');
-                    document.body.style.overflow = '';
-                }
-            });
         });
     });
 </script>

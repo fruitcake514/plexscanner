@@ -42,25 +42,58 @@
             </div>
 
             <div class="mb-5">
+                <h2 class="text-xl font-semibold text-white mb-4 border-b border-gray-700 pb-2">Download Client Settings</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="mb-4">
+                        <label for="min_quality" class="block text-gray-300 text-sm font-bold mb-2">Minimum Quality:</label>
+                        <input type="text" id="min_quality" name="min_quality" value="{{ config.download_client.min_quality }}"
+                               class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
+                    </div>
+                    <div class="mb-4">
+                        <label for="max_quality" class="block text-gray-300 text-sm font-bold mb-2">Maximum Quality:</label>
+                        <input type="text" id="max_quality" name="max_quality" value="{{ config.download_client.max_quality }}"
+                               class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
+                    </div>
+                    <div class="mb-4">
+                        <label for="codec" class="block text-gray-300 text-sm font-bold mb-2">Preferred Codec:</label>
+                        <input type="text" id="codec" name="codec" value="{{ config.download_client.codec }}"
+                               class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
+                    </div>
+                    <div class="mb-4">
+                        <label for="min_seeders" class="block text-gray-300 text-sm font-bold mb-2">Minimum Seeders:</label>
+                        <input type="number" id="min_seeders" name="min_seeders" value="{{ config.download_client.min_seeders }}"
+                               class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-5">
                 <h2 class="text-xl font-semibold text-white mb-4 border-b border-gray-700 pb-2">Prowlarr Settings</h2>
-                <div class="mb-4">
-                    <label for="prowlarr_url" class="block text-gray-300 text-sm font-bold mb-2">Prowlarr URL:</label>
-                    <input type="text" id="prowlarr_url" name="prowlarr_url" value="{{ config.prowlarr.url }}"
-                           class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
+                <div class="flex items-center mb-4">
+                    <div class="flex-grow">
+                        <label for="prowlarr_url" class="block text-gray-300 text-sm font-bold mb-2">Prowlarr URL:</label>
+                        <input type="text" id="prowlarr_url" name="prowlarr_url" value="{{ config.prowlarr.url }}"
+                               class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
+                    </div>
+                    <button type="button" id="test-prowlarr" class="ml-4 mt-5 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg">Test</button>
                 </div>
                 <div class="mb-4">
                     <label for="prowlarr_api_key" class="block text-gray-300 text-sm font-bold mb-2">Prowlarr API Key:</label>
                     <input type="text" id="prowlarr_api_key" name="prowlarr_api_key" value="{{ config.prowlarr.api_key }}"
                            class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
                 </div>
+                <div id="prowlarr-test-result" class="text-sm mt-2"></div>
             </div>
 
             <div class="mb-5">
                 <h2 class="text-xl font-semibold text-white mb-4 border-b border-gray-700 pb-2">qBittorrent Settings</h2>
-                <div class="mb-4">
-                    <label for="qbittorrent_host" class="block text-gray-300 text-sm font-bold mb-2">qBittorrent Host:</label>
-                    <input type="text" id="qbittorrent_host" name="qbittorrent_host" value="{{ config.qbittorrent.host }}"
-                           class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
+                <div class="flex items-center mb-4">
+                    <div class="flex-grow">
+                        <label for="qbittorrent_host" class="block text-gray-300 text-sm font-bold mb-2">qBittorrent Host:</label>
+                        <input type="text" id="qbittorrent_host" name="qbittorrent_host" value="{{ config.qbittorrent.host }}"
+                               class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
+                    </div>
+                    <button type="button" id="test-qbittorrent" class="ml-4 mt-5 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg">Test</button>
                 </div>
                 <div class="mb-4">
                     <label for="qbittorrent_port" class="block text-gray-300 text-sm font-bold mb-2">qBittorrent Port:</label>
@@ -77,25 +110,7 @@
                     <input type="password" id="qbittorrent_password" name="qbittorrent_password" value="{{ config.qbittorrent.password }}"
                            class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
                 </div>
-                <div class="mt-4 p-4 bg-gray-700 rounded">
-                    <h3 class="text-lg font-semibold text-white mb-3">Category Mappings</h3>
-                    <p class="text-gray-400 text-sm mb-4">Map Prowlarr categories to qBittorrent categories (TV → tv, Movies → movies, other → prowlarr)</p>
-                    
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-gray-300 text-sm font-bold mb-2">Movies Category:</label>
-                            <input type="text" name="category_mapping_movies" value="{{ config.qbittorrent.category_mappings.movies if config.qbittorrent.category_mappings else 'movies' }}"
-                                   class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500"
-                                   placeholder="movies">
-                        </div>
-                        <div>
-                            <label class="block text-gray-300 text-sm font-bold mb-2">TV Category:</label>
-                            <input type="text" name="category_mapping_tv" value="{{ config.qbittorrent.category_mappings.tv if config.qbittorrent.category_mappings else 'tv' }}"
-                                   class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500"
-                                   placeholder="tv">
-                        </div>
-                    </div>
-                </div>
+                <div id="qbittorrent-test-result" class="text-sm mt-2"></div>
             </div>
 
             <div class="flex items-center justify-between">
@@ -106,4 +121,66 @@
         </form>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('test-prowlarr').addEventListener('click', function() {
+        const resultDiv = document.getElementById('prowlarr-test-result');
+        resultDiv.textContent = 'Testing...';
+        fetch('/test_prowlarr_connection', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                url: document.getElementById('prowlarr_url').value,
+                api_key: document.getElementById('prowlarr_api_key').value
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                resultDiv.textContent = 'Connection successful!';
+                resultDiv.classList.remove('text-red-500');
+                resultDiv.classList.add('text-green-500');
+            } else {
+                resultDiv.textContent = `Connection failed: ${data.error}`;
+                resultDiv.classList.remove('text-green-500');
+                resultDiv.classList.add('text-red-500');
+            }
+        });
+    });
+
+    document.getElementById('test-qbittorrent').addEventListener('click', function() {
+        const resultDiv = document.getElementById('qbittorrent-test-result');
+        resultDiv.textContent = 'Testing...';
+        fetch('/test_qbittorrent_connection', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                host: document.getElementById('qbittorrent_host').value,
+                port: document.getElementById('qbittorrent_port').value,
+                username: document.getElementById('qbittorrent_username').value,
+                password: document.getElementById('qbittorrent_password').value
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                resultDiv.textContent = 'Connection successful!';
+                resultDiv.classList.remove('text-red-500');
+                resultDiv.classList.add('text-green-500');
+            } else {
+                resultDiv.textContent = `Connection failed: ${data.error}`;
+                resultDiv.classList.remove('text-green-500');
+                resultDiv.classList.add('text-red-500');
+            }
+        });
+    });
+});
+</script>
 {% endblock %}

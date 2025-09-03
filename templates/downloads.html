@@ -4,41 +4,104 @@
 
 {% block content %}
 <div class="container mx-auto px-4 py-8">
-    <h1 class="text-3xl font-bold text-white mb-6"><i class="bi bi-download mr-2"></i> Downloads</h1>
+    <h1 class="text-3xl font-bold text-white mb-6"><i class="bi bi-download mr-2"></i> qBittorrent Downloads</h1>
 
-    <div id="downloads-list" class="bg-gray-800 p-6 rounded-lg shadow-lg">
-        
+    <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+        <div class="p-4">
+            <table class="w-full text-left text-gray-300">
+                <thead class="bg-gray-700 text-gray-400 uppercase text-sm">
+                    <tr>
+                        <th class="p-3">Name</th>
+                        <th class="p-3">Size</th>
+                        <th class="p-3">Progress</th>
+                        <th class="p-3">Status</th>
+                        <th class="p-3">Down Speed</th>
+                        <th class="p-3">Up Speed</th>
+                        <th class="p-3">ETA</th>
+                    </tr>
+                </thead>
+                <tbody id="downloads-tbody">
+                    <!-- Downloads will be dynamically inserted here -->
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 
+<template id="download-row-template">
+    <tr class="border-b border-gray-700">
+        <td class="p-3 font-medium text-white"></td>
+        <td class="p-3"></td>
+        <td class="p-3">
+            <div class="w-full bg-gray-700 rounded-full h-2.5">
+                <div class="bg-blue-600 h-2.5 rounded-full"></div>
+            </div>
+        </td>
+        <td class="p-3"></td>
+        <td class="p-3"></td>
+        <td class="p-3"></td>
+        <td class="p-3"></td>
+    </tr>
+</template>
+
 <script>
+    function formatBytes(bytes, decimals = 2) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+
+    function formatEta(etaInSeconds) {
+        if (etaInSeconds <= 0 || etaInSeconds === 8640000) return '∞';
+        const hours = Math.floor(etaInSeconds / 3600);
+        const minutes = Math.floor((etaInSeconds % 3600) / 60);
+        const seconds = etaInSeconds % 60;
+        return `${hours}h ${minutes}m ${seconds}s`;
+    }
+
     function fetchDownloads() {
         fetch('/downloads_status')
             .then(response => response.json())
             .then(data => {
-                const downloadsContainer = document.getElementById('downloads-list');
-                downloadsContainer.innerHTML = '';
+                const tbody = document.getElementById('downloads-tbody');
+                const template = document.getElementById('download-row-template');
+                tbody.innerHTML = '';
+
                 if (data.error) {
-                    downloadsContainer.innerHTML = `<p class="text-red-500">${data.error}</p>`;
+                    tbody.innerHTML = `<tr><td colspan="7" class="text-center p-4 text-red-500">${data.error}</td></tr>`;
                     return;
                 }
+
+                if (data.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="7" class="text-center p-4 text-gray-400">No active downloads.</td></tr>`;
+                    return;
+                }
+
                 data.forEach(download => {
-                    const downloadElement = document.createElement('div');
-                    downloadElement.className = 'bg-gray-900 p-4 rounded-lg shadow-lg mb-4';
-                    downloadElement.innerHTML = `
-                        <h2 class="text-xl font-bold text-white">${download.name}</h2>
-                        <p class="text-gray-400">${(download.size / 1024 / 1024 / 1024).toFixed(2)} GB</p>
-                        <p class="text-gray-400">${download.state}</p>
-                        <div class="w-full bg-gray-700 rounded-full h-2.5 mt-2">
-                            <div class="bg-blue-600 h-2.5 rounded-full" style="width: ${download.progress * 100}%"></div>
-                        </div>
-                    `;
-                    downloadsContainer.appendChild(downloadElement);
+                    const clone = template.content.cloneNode(true);
+                    const cells = clone.querySelectorAll('td');
+                    
+                    cells[0].textContent = download.name;
+                    cells[1].textContent = formatBytes(download.size);
+                    
+                    const progressBar = clone.querySelector('.bg-blue-600');
+                    progressBar.style.width = `${download.progress * 100}%`;
+                    progressBar.textContent = `${(download.progress * 100).toFixed(1)}%`;
+
+                    cells[3].textContent = download.state;
+                    cells[4].textContent = `${formatBytes(download.dlspeed)}/s`;
+                    cells[5].textContent = `${formatBytes(download.upspeed)}/s`;
+                    cells[6].textContent = formatEta(download.eta);
+
+                    tbody.appendChild(clone);
                 });
             });
     }
 
-    setInterval(fetchDownloads, 5000);
+    setInterval(fetchDownloads, 2000); // Fetch every 2 seconds for a more responsive feel
     fetchDownloads();
 </script>
 {% endblock %}

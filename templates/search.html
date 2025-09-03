@@ -26,6 +26,7 @@
                     <th class="py-2 px-4 text-left text-white">Size (GB)</th>
                     <th class="py-2 px-4 text-left text-white">Resolution</th>
                     <th class="py-2 px-4 text-left text-white">Codec</th>
+                    <th class="py-2 px-4 text-left text-white">Category</th>
                     <th class="py-2 px-4 text-left text-white">Owned</th>
                     <th class="py-2 px-4 text-left text-white"></th>
                 </tr>
@@ -37,71 +38,110 @@
 </div>
 
 <script>
-    document.getElementById('search-form').addEventListener('submit', function(e) {
-        e.preventDefault();
-        const query = document.getElementById('search-query').value;
-        fetch(`/search_prowlarr?query=${query}`)
-            .then(response => response.json())
-            .then(data => {
-                const resultsContainer = document.getElementById('search-results');
-                resultsContainer.innerHTML = '';
-                if (data.error) {
-                    resultsContainer.innerHTML = `<p class="text-red-500">${data.error}</p>`;
-                    return;
-                }
-                data.forEach((result, index) => {
-                    const resultRow = document.createElement('tr');
-                    resultRow.className = 'border-b border-gray-700';
-                    resultRow.innerHTML = `
-                        <td class="py-2 px-4 text-white">${result.title}</td>
-                        <td class="py-2 px-4 text-white">${result.seeders}</td>
-                        <td class="py-2 px-4 text-white">${(result.size / 1073741824).toFixed(2)}</td>
-                        <td class="py-2 px-4 text-white">${result.resolution}</td>
-                        <td class="py-2 px-4 text-white">${result.codec}</td>
-                        <td class="py-2 px-4 text-white">${result.owned ? 'Yes' : 'No'}</td>
-                        <td class="py-2 px-4 text-white">${(result.magnetUrl || result.downloadUrl || result.link || result.guid) ? `<button class="bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-2 rounded" data-magnet="${result.magnetUrl || result.downloadUrl || result.link || result.guid}" data-result-index="${index}">Download</button>` : ''}</td>
-                    `;
-                    resultsContainer.appendChild(resultRow);
-                    
-                    // Store the result data for later use
-                    if (result.magnetUrl || result.downloadUrl || result.link || result.guid) {
-                        window.searchResults = window.searchResults || [];
-                        window.searchResults[index] = result;
-                    }
-                });
-            });
-    });
+    document.addEventListener('DOMContentLoaded', function() {
+        const searchForm = document.getElementById('search-form');
+        const searchQuery = document.getElementById('search-query');
+        const searchButton = searchForm.querySelector('button[type="submit"]');
+        const resultsBody = document.getElementById('results-body');
 
-    // Add event listener for download buttons
-    document.addEventListener('click', function(e) {
-        if (e.target.dataset.magnet) {
-            const magnetLink = e.target.dataset.magnet;
-            const resultIndex = parseInt(e.target.dataset.resultIndex);
-            const result = window.searchResults ? window.searchResults[resultIndex] : null;
-            const categories = result ? (result.categories || []) : [];
-            download(magnetLink, categories);
+        // Populate search bar from URL query parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const queryFromUrl = urlParams.get('query');
+        if (queryFromUrl) {
+            searchQuery.value = queryFromUrl;
+            performSearch(queryFromUrl);
         }
-    });
 
-    function download(magnetLink, categories = []) {
-        fetch('/download', { 
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ 
-                magnet: magnetLink,
-                categories: categories 
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert('Download started!');
-            } else {
-                alert(`Error: ${data.error}`);
+        searchForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const query = searchQuery.value;
+            performSearch(query);
+        });
+
+        function performSearch(query) {
+            // Show loading indicator
+            searchButton.disabled = true;
+            searchButton.innerHTML = `
+                <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Searching...
+            `;
+            resultsBody.innerHTML = '<tr><td colspan="8" class="text-center py-4">Searching...</td></tr>';
+
+            fetch(`/search_prowlarr?query=${query}`)
+                .then(response => response.json())
+                .then(data => {
+                    resultsBody.innerHTML = '';
+                    if (data.error) {
+                        resultsBody.innerHTML = `<tr><td colspan="8" class="text-red-500 text-center py-4">${data.error}</td></tr>`;
+                        return;
+                    }
+                    if (data.length === 0) {
+                        resultsBody.innerHTML = `<tr><td colspan="8" class="text-gray-400 text-center py-4">No results found.</td></tr>`;
+                        return;
+                    }
+                    data.forEach((result, index) => {
+                        const resultRow = document.createElement('tr');
+                        resultRow.className = 'border-b border-gray-700';
+                        resultRow.innerHTML = `
+                            <td class="py-2 px-4 text-white">${result.title}</td>
+                            <td class="py-2 px-4 text-white">${result.seeders}</td>
+                            <td class="py-2 px-4 text-white">${(result.size / 1073741824).toFixed(2)}</td>
+                            <td class="py-2 px-4 text-white">${result.resolution}</td>
+                            <td class="py-2 px-4 text-white">${result.codec}</td>
+                            <td class="py-2 px-4 text-white">${result.category}</td>
+                            <td class="py-2 px-4 text-white">${result.owned ? 'Yes' : 'No'}</td>
+                            <td class="py-2 px-4 text-white">${(result.magnetUrl || result.downloadUrl || result.link || result.guid) ? `<button class="bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-2 rounded" data-link="${result.magnetUrl || result.downloadUrl || result.link || result.guid}" data-result-index="${index}">Download</button>` : ''}</td>
+                        `;
+                        resultsBody.appendChild(resultRow);
+                        
+                        // Store the result data for later use
+                        if (result.magnetUrl || result.downloadUrl || result.link || result.guid) {
+                            window.searchResults = window.searchResults || [];
+                            window.searchResults[index] = result;
+                        }
+                    });
+                })
+                .finally(() => {
+                    // Restore search button
+                    searchButton.disabled = false;
+                    searchButton.innerHTML = 'Search';
+                });
+        }
+
+        // Add event listener for download buttons
+        document.addEventListener('click', function(e) {
+            if (e.target.dataset.link) {
+                const link = e.target.dataset.link;
+                const resultIndex = parseInt(e.target.dataset.resultIndex);
+                const result = window.searchResults ? window.searchResults[resultIndex] : null;
+                const category = result ? (result.category) : null;
+                download(link, category);
             }
         });
-    }
+
+        function download(link, category) {
+            fetch('/download', { 
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    link: link,
+                    category: category 
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Download started!');
+                } else {
+                    alert(`Error: ${data.error}`);
+                }
+            });
+        }
+    });
 </script>
 {% endblock %}
