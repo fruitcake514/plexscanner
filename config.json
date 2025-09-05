@@ -58,5 +58,14 @@
     "debug": true,
     "host": "0.0.0.0",
     "port": 5555
-  }
+  },
+    "scheduler": {
+    "tv_scan_schedule": {
+      "enabled": true,
+      "interval_hours": 1
+    },
+    "movie_scan_schedule": {
+      "enabled": true,
+      "interval_hours": 1
+    }
 }
