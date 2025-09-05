@@ -59,7 +59,7 @@
     "host": "0.0.0.0",
     "port": 5555
   },
-    "scheduler": {
+  "scheduler": {
     "tv_scan_schedule": {
       "enabled": true,
       "interval_hours": 1
@@ -68,4 +68,5 @@
       "enabled": true,
       "interval_hours": 1
     }
+  }
 }
