@@ -14,6 +14,7 @@ import logging
 
 from qbittorrentapi import Client
 import re
+from apscheduler.schedulers.background import BackgroundScheduler
 
 app = Flask(__name__, static_folder='static')
 
@@ -759,6 +760,41 @@ def run_movie_scan_thread():
         MOVIE_SCAN_STATUS['in_progress'] = False
         MOVIE_SCAN_STATUS['stop_requested'] = False
 
+# Initialize scheduler
+scheduler = BackgroundScheduler(daemon=True)
+
+def schedule_tv_scan():
+    # This function will be called by the scheduler
+    global SCAN_STATUS
+    if not SCAN_STATUS['in_progress']:
+        app.logger.info("Starting scheduled TV show scan.")
+        run_scan_thread()
+    else:
+        app.logger.info("Skipping scheduled TV show scan as one is already in progress.")
+
+def schedule_movie_scan():
+    global MOVIE_SCAN_STATUS
+    if not MOVIE_SCAN_STATUS['in_progress']:
+        app.logger.info("Starting scheduled movie scan.")
+        run_movie_scan_thread()
+    else:
+        app.logger.info("Skipping scheduled movie scan as one is already in progress.")
+
+def update_scheduled_jobs():
+    scheduler.remove_all_jobs()
+    
+    tv_schedule = CONFIG.get('scheduler', {}).get('tv_scan_schedule', {})
+    if tv_schedule.get('enabled'):
+        interval = tv_schedule.get('interval_hours', 24)
+        scheduler.add_job(schedule_tv_scan, 'interval', hours=interval, id='tv_scan_job')
+        app.logger.info(f"Scheduled TV show scan to run every {interval} hours.")
+
+    movie_schedule = CONFIG.get('scheduler', {}).get('movie_scan_schedule', {})
+    if movie_schedule.get('enabled'):
+        interval = movie_schedule.get('interval_hours', 24)
+        scheduler.add_job(schedule_movie_scan, 'interval', hours=interval, id='movie_scan_job')
+        app.logger.info(f"Scheduled movie scan to run every {interval} hours.")
+
 # === FLASK ROUTES ===
 @app.route('/')
 def index():
@@ -937,11 +973,13 @@ def movies():
             m['owned'] = True
             
         all_movies = sorted(owned_movies + missing_movies, key=lambda x: x.get('release_date') or '1900-01-01')
+        has_missing_movies = len(missing_movies) > 0
 
         if all_movies:
             collections_with_movies.append({
                 'collection': coll,
-                'movies': all_movies
+                'movies': all_movies,
+                'has_missing_movies': has_missing_movies
             })
             
     conn.close()
@@ -1173,8 +1211,6 @@ def save_settings():
     # Update TMDb settings
     CONFIG['tmdb']['api_key'] = request.form['tmdb_api_key']
     
-    
-    
     # Update Download Client settings
     CONFIG['download_client']['min_quality'] = request.form['min_quality']
     CONFIG['download_client']['max_quality'] = request.form['max_quality']
@@ -1190,9 +1226,23 @@ def save_settings():
     CONFIG['qbittorrent']['port'] = int(request.form['qbittorrent_port'])
     CONFIG['qbittorrent']['username'] = request.form['qbittorrent_username']
     CONFIG['qbittorrent']['password'] = request.form['qbittorrent_password']
+
+    # Update scheduler settings
+    if 'scheduler' not in CONFIG:
+        CONFIG['scheduler'] = {}
+    CONFIG['scheduler']['tv_scan_schedule'] = {
+        "enabled": 'tv_scan_schedule_enabled' in request.form,
+        "interval_hours": int(request.form.get('tv_scan_interval', 24))
+    }
+    CONFIG['scheduler']['movie_scan_schedule'] = {
+        "enabled": 'movie_scan_schedule_enabled' in request.form,
+        "interval_hours": int(request.form.get('movie_scan_interval', 24))
+    }
     
     with open(CONFIG_PATH, 'w') as config_file:
         json.dump(CONFIG, config_file, indent=2)
+        
+    update_scheduled_jobs() # Reload jobs
         
     return redirect(url_for('settings'))
 
@@ -1232,4 +1282,6 @@ def test_qbittorrent_connection():
         return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
+    update_scheduled_jobs()
+    scheduler.start()
     app.run(host=CONFIG['app']['host'], port=CONFIG['app']['port'], debug=CONFIG['app']['debug'])
