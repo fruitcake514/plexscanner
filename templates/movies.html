@@ -15,9 +15,15 @@
         </button>
     </div>
 
-    <!-- Search Bar -->
-    <div class="mb-6">
-        <input type="text" id="movie-search" class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500" placeholder="Search for a collection or movie...">
+    <!-- Search and Filter -->
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-4">
+        <div class="flex-grow">
+            <input type="text" id="movie-search" class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-900 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500" placeholder="Search for a collection or movie...">
+        </div>
+        <div class="flex items-center">
+            <input type="checkbox" id="filter-missing" class="form-checkbox h-5 w-5 text-blue-600 bg-gray-900 border-gray-700 rounded focus:ring-blue-500">
+            <label for="filter-missing" class="ml-2 text-gray-300">Show only collections with missing movies</label>
+        </div>
     </div>
 
     <!-- Progress bar and scan information -->
@@ -40,7 +46,7 @@
     <div id="collections-container">
     {% if collections %}
         {% for item in collections %}
-            <div class="bg-gray-800 rounded-lg shadow-lg mb-6 collection-item">
+            <div class="bg-gray-800 rounded-lg shadow-lg mb-6 collection-item" data-has-missing="{{ 'true' if item.has_missing_movies else 'false' }}">
                 <div class="p-4 bg-gray-700 rounded-t-lg">
                     <h2 class="text-2xl font-bold text-white collection-title">{{ item.collection.name }}</h2>
                 </div>
@@ -124,12 +130,17 @@
             }
         });
 
-        // Search script
+        // Search and Filter script
         const searchInput = document.getElementById('movie-search');
-        searchInput.addEventListener('input', function() {
-            const query = this.value.toLowerCase();
+        const filterCheckbox = document.getElementById('filter-missing');
+
+        function filterAndSearch() {
+            const query = searchInput.value.toLowerCase();
+            const showOnlyMissing = filterCheckbox.checked;
+
             document.querySelectorAll('.collection-item').forEach(collection => {
                 const collectionTitle = collection.querySelector('.collection-title').textContent.toLowerCase();
+                const hasMissing = collection.dataset.hasMissing === 'true';
                 let collectionMatch = collectionTitle.includes(query);
                 let movieMatches = 0;
 
@@ -143,13 +154,21 @@
                     }
                 });
 
-                if (collectionMatch || movieMatches > 0) {
+                let showCollection = (collectionMatch || movieMatches > 0);
+                if (showOnlyMissing && !hasMissing) {
+                    showCollection = false;
+                }
+
+                if (showCollection) {
                     collection.style.display = 'block';
                 } else {
                     collection.style.display = 'none';
                 }
             });
-        });
+        }
+
+        searchInput.addEventListener('input', filterAndSearch);
+        filterCheckbox.addEventListener('change', filterAndSearch);
 
         // Scan script
         let movieScanInProgress = false;
