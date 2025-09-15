@@ -135,37 +135,44 @@
         const filterCheckbox = document.getElementById('filter-missing');
 
         function filterAndSearch() {
-            const query = searchInput.value.toLowerCase();
-            const showOnlyMissing = filterCheckbox.checked;
+    const query = searchInput.value.toLowerCase();
+    const showOnlyMissing = filterCheckbox.checked;
+    const today = new Date();
 
-            document.querySelectorAll('.collection-item').forEach(collection => {
-                const collectionTitle = collection.querySelector('.collection-title').textContent.toLowerCase();
-                const hasMissing = collection.dataset.hasMissing === 'true';
-                let collectionMatch = collectionTitle.includes(query);
-                let movieMatches = 0;
+    document.querySelectorAll('.collection-item').forEach(collection => {
+        const collectionTitle = collection.querySelector('.collection-title').textContent.toLowerCase();
+        const hasMissing = collection.dataset.hasMissing === 'true';
+        let collectionMatch = collectionTitle.includes(query);
+        let movieMatches = 0;
 
-                collection.querySelectorAll('.movie-card').forEach(movieCard => {
-                    const movieTitle = movieCard.dataset.movieTitle;
-                    if (movieTitle.includes(query)) {
-                        movieCard.style.display = 'block';
-                        movieMatches++;
-                    } else {
-                        movieCard.style.display = 'none';
-                    }
-                });
+        collection.querySelectorAll('.movie-card').forEach(movieCard => {
+            const movieTitle = movieCard.dataset.movieTitle.toLowerCase();
+            const movieDetails = JSON.parse(movieCard.dataset.movieDetails);
 
-                let showCollection = (collectionMatch || movieMatches > 0);
-                if (showOnlyMissing && !hasMissing) {
-                    showCollection = false;
-                }
+            // Check if movie release date is after today
+            let isFutureMovie = false;
+            if (movieDetails.release_date) {
+                const releaseDate = new Date(movieDetails.release_date);
+                isFutureMovie = releaseDate > today;
+            }
 
-                if (showCollection) {
-                    collection.style.display = 'block';
-                } else {
-                    collection.style.display = 'none';
-                }
-            });
+            // Only show if it matches query, matches missing filter, and is not a future movie
+            if (movieTitle.includes(query) && (!showOnlyMissing || !movieDetails.owned) && !isFutureMovie) {
+                movieCard.style.display = 'block';
+                movieMatches++;
+            } else {
+                movieCard.style.display = 'none';
+            }
+        });
+
+        let showCollection = (collectionMatch || movieMatches > 0);
+        if (showOnlyMissing && !hasMissing) {
+            showCollection = false;
         }
+
+        collection.style.display = showCollection ? 'block' : 'none';
+    });
+}
 
         searchInput.addEventListener('input', filterAndSearch);
         filterCheckbox.addEventListener('change', filterAndSearch);
