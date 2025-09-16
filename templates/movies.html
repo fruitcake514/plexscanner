@@ -145,25 +145,33 @@
         let collectionMatch = collectionTitle.includes(query);
         let movieMatches = 0;
 
-        collection.querySelectorAll('.movie-card').forEach(movieCard => {
-            const movieTitle = movieCard.dataset.movieTitle.toLowerCase();
-            const movieDetails = JSON.parse(movieCard.dataset.movieDetails);
+    1         collection.querySelectorAll('.movie-card').forEach(movieCard => {
+    2             const movieTitle = movieCard.dataset.movieTitle.toLowerCase();
+    3             const movieDetails = JSON.parse(movieCard.dataset.movieDetails);
+    4 
+    5             // Check if the movie has a valid release date that is in the past or 
+      present
+    6             let isReleased = false;
+    7             if (movieDetails.release_date) {
+    8                 const releaseDate = new Date(movieDetails.release_date);
+    9                 // Ensure the date is valid and not in the future
+   10                 if (!isNaN(releaseDate.getTime()) && releaseDate <= today) {
+   11                     isReleased = true;
+   12                 }
+   13             }
+   14 
+   15             // Only show if it matches query, matches missing filter, AND has been 
+      released
+   16             if (movieTitle.includes(query) && (!showOnlyMissing || !movieDetails.owned)
+      && isReleased) {
+   17                 movieCard.style.display = 'block';
+   18                 movieMatches++;
+   19             } else {
+   20                 movieCard.style.display = 'none';
+   21             }
+   22         });
 
-            // Check if movie release date is after today
-            let isFutureMovie = false;
-            if (movieDetails.release_date) {
-                const releaseDate = new Date(movieDetails.release_date);
-                isFutureMovie = releaseDate > today;
-            }
 
-            // Only show if it matches query, matches missing filter, and is not a future movie
-            if (movieTitle.includes(query) && (!showOnlyMissing || !movieDetails.owned) && !isFutureMovie) {
-                movieCard.style.display = 'block';
-                movieMatches++;
-            } else {
-                movieCard.style.display = 'none';
-            }
-        });
 
         let showCollection = (collectionMatch || movieMatches > 0);
         if (showOnlyMissing && !hasMissing) {
